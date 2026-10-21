@@ -8,6 +8,7 @@ import com.ranharari.miniwsa.sink.EventSink;
 import com.ranharari.miniwsa.sink.EventWriter;
 import com.ranharari.miniwsa.sink.FailedEventPublisher;
 import com.ranharari.miniwsa.sink.KafkaFailedEventPublisher;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -21,7 +22,10 @@ import java.time.Clock;
 /** The sink role: Kafka listener → EventSink → ClickHouse, with bad events parked on events.failed. */
 @Configuration
 @Profile({"sink", "default"})
+@EnableConfigurationProperties(SinkProperties.class)
 public class SinkConfig {
+
+    private static final double BACKOFF_MULTIPLIER = 2.0;
 
     @Bean
     EventWriter eventWriter(JdbcTemplate jdbcTemplate) {
@@ -44,13 +48,14 @@ public class SinkConfig {
     }
 
     /**
-     * A failed insert (e.g. ClickHouse down) is retried with growing pauses, up to 30 s apart, and
-     * never given up: dropping a batch would lose events. Meanwhile events wait safely in Kafka.
+     * A failed insert (e.g. ClickHouse down) is retried with pauses that double each time, up to
+     * wsa.sink.retry-max apart, and never given up: dropping a batch would lose events. Meanwhile
+     * events wait safely in Kafka.
      */
     @Bean
-    DefaultErrorHandler sinkErrorHandler() {
-        ExponentialBackOff backOff = new ExponentialBackOff(1_000, 2.0);
-        backOff.setMaxInterval(30_000);
+    DefaultErrorHandler sinkErrorHandler(SinkProperties properties) {
+        ExponentialBackOff backOff = new ExponentialBackOff(properties.retryInitial().toMillis(), BACKOFF_MULTIPLIER);
+        backOff.setMaxInterval(properties.retryMax().toMillis());
         return new DefaultErrorHandler(backOff);
     }
 }

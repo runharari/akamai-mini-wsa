@@ -13,6 +13,9 @@ import java.time.Instant;
 @RestController
 public class SamplesController {
 
+    // Strings, because annotation values must be compile-time constants of the parameter's text form.
+    private static final String DEFAULT_LIMIT = "20";
+    private static final String DEFAULT_OFFSET = "0";
     private static final int MAX_LIMIT = 100;
 
     private final TimeRangeResolver timeRangeResolver;
@@ -30,8 +33,8 @@ public class SamplesController {
                                @RequestParam(required = false) Instant to,
                                @RequestParam(required = false) Category category,
                                @RequestParam(required = false) Action action,
-                               @RequestParam(defaultValue = "20") int limit,
-                               @RequestParam(defaultValue = "0") int offset) {
+                               @RequestParam(defaultValue = DEFAULT_LIMIT) int limit,
+                               @RequestParam(defaultValue = DEFAULT_OFFSET) int offset) {
         checkLimit(limit);
         checkOffset(offset);
         TimeRange range = timeRangeResolver.resolve(from, to);

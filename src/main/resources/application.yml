@@ -58,3 +58,5 @@ wsa:
     max-clock-skew: 5m      # so do timestamps further in the future
   sink:
     concurrency: 3
+    retry-initial: 1s       # a failed ClickHouse insert is retried after this ...
+    retry-max: 30s          # ... doubling each time, up to this; never given up

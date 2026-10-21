@@ -20,12 +20,14 @@ public class RequestIdFilter implements Filter {
 
     public static final String HEADER = "X-Request-Id";
     public static final String MDC_KEY = "requestId";
+    /** A longer client-sent id is replaced, so a client can't flood the logs through it. */
+    private static final int MAX_LENGTH = 64;
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
         String requestId = ((HttpServletRequest) request).getHeader(HEADER);
-        if (requestId == null || requestId.isBlank() || requestId.length() > 64) {
+        if (requestId == null || requestId.isBlank() || requestId.length() > MAX_LENGTH) {
             requestId = UUID.randomUUID().toString();
         }
         MDC.put(MDC_KEY, requestId);
