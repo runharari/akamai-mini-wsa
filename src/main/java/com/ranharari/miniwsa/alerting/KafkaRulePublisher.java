@@ -2,17 +2,13 @@ package com.ranharari.miniwsa.alerting;
 
 import com.ranharari.miniwsa.common.config.Topics;
 import com.ranharari.miniwsa.common.exception.ServiceUnavailableException;
-import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Component;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /** The compacted alert.rules topic is the rules' database: Kafka keeps the latest version of every rule. */
-@Component
-@Profile({"alerting", "default"})
 public class KafkaRulePublisher implements RulePublisher {
 
     private static final long TIMEOUT_SECONDS = 10;

@@ -8,9 +8,6 @@ import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.QueryableStoreType;
 import org.apache.kafka.streams.state.QueryableStoreTypes;
 import org.apache.kafka.streams.state.WindowStoreIterator;
-import org.springframework.context.annotation.Profile;
-import org.springframework.kafka.config.StreamsBuilderFactoryBean;
-import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,13 +20,12 @@ import java.util.function.Supplier;
  * Assumes one alerting instance. With several, each would hold only some count keys, and a request
  * would have to be forwarded to the instance that owns the key (KafkaStreams#queryMetadataForKey).
  */
-@Component
-@Profile({"alerting", "default"})
 public class KafkaStreamsAlertStateReader implements AlertStateReader {
 
-    private final StreamsBuilderFactoryBean streams;
+    /** The running app; null until it has started. */
+    private final Supplier<KafkaStreams> streams;
 
-    public KafkaStreamsAlertStateReader(StreamsBuilderFactoryBean streams) {
+    public KafkaStreamsAlertStateReader(Supplier<KafkaStreams> streams) {
         this.streams = streams;
     }
 
@@ -60,7 +56,7 @@ public class KafkaStreamsAlertStateReader implements AlertStateReader {
     }
 
     private <T> T store(String name, QueryableStoreType<T> type) {
-        KafkaStreams kafkaStreams = streams.getKafkaStreams();
+        KafkaStreams kafkaStreams = streams.get();
         if (kafkaStreams == null || kafkaStreams.state() != KafkaStreams.State.RUNNING) {
             throw new InvalidStateStoreException("Kafka Streams is not running yet");
         }
