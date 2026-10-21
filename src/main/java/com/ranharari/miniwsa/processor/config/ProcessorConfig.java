@@ -1,7 +1,8 @@
-package com.ranharari.miniwsa.processor;
+package com.ranharari.miniwsa.processor.config;
 
-import com.ranharari.miniwsa.common.event.EnrichedEvent;
-import com.ranharari.miniwsa.common.event.SecurityEvent;
+import com.ranharari.miniwsa.processor.EnrichmentTopology;
+import com.ranharari.miniwsa.common.model.EnrichedEvent;
+import com.ranharari.miniwsa.common.model.SecurityEvent;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler.StreamThreadExceptionResponse;

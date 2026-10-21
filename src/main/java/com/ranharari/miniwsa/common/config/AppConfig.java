@@ -1,4 +1,4 @@
-package com.ranharari.miniwsa.common;
+package com.ranharari.miniwsa.common.config;
 
 import org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
@@ -8,7 +8,7 @@ import tools.jackson.databind.cfg.EnumFeature;
 import java.time.Clock;
 
 @Configuration
-public class CommonConfig {
+public class AppConfig {
 
     /** Injected wherever "now" matters, so tests can use a fixed clock. */
     @Bean

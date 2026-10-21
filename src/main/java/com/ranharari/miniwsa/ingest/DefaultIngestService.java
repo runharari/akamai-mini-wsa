@@ -1,9 +1,11 @@
 package com.ranharari.miniwsa.ingest;
 
-import com.ranharari.miniwsa.common.error.InvalidRequestException;
-import com.ranharari.miniwsa.common.error.PublishFailedException;
-import com.ranharari.miniwsa.common.event.SecurityEvent;
-import com.ranharari.miniwsa.common.metrics.PipelineMetrics;
+import com.ranharari.miniwsa.common.exception.InvalidRequestException;
+import com.ranharari.miniwsa.common.exception.PublishFailedException;
+import com.ranharari.miniwsa.common.metrics.MetricsFactory;
+import com.ranharari.miniwsa.common.model.SecurityEvent;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
@@ -23,14 +25,21 @@ public class DefaultIngestService implements IngestService {
 
     private final EventRequestParser parser;
     private final EventPublisher publisher;
-    private final PipelineMetrics metrics;
     private final Clock clock;
 
-    public DefaultIngestService(EventRequestParser parser, EventPublisher publisher, PipelineMetrics metrics, Clock clock) {
+    private final Counter acceptedEvents;
+    private final Counter rejectedEvents;
+    private final Timer publishTime;
+    private final Counter publishFailures;
+
+    public DefaultIngestService(EventRequestParser parser, EventPublisher publisher, MetricsFactory metrics, Clock clock) {
         this.parser = parser;
         this.publisher = publisher;
-        this.metrics = metrics;
         this.clock = clock;
+        this.acceptedEvents = metrics.counter("ingest.events", "Events accepted by the ingest API", "result", "accepted");
+        this.rejectedEvents = metrics.counter("ingest.events", "Events rejected by validation", "result", "rejected");
+        this.publishTime = metrics.timer("ingest.publish", "Time to get Kafka acks for one ingest request");
+        this.publishFailures = metrics.counter("ingest.publish.failures", "Ingest requests that failed to publish (503)");
     }
 
     @Override
@@ -39,7 +48,7 @@ public class DefaultIngestService implements IngestService {
         try {
             events = parser.parse(body);
         } catch (InvalidRequestException e) {
-            metrics.ingestRejected(eventCount(body));
+            rejectedEvents.increment(eventCount(body));
             throw e;
         }
 
@@ -50,14 +59,14 @@ public class DefaultIngestService implements IngestService {
         try {
             publisher.publish(stamped);
         } catch (PublishFailedException e) {
-            metrics.ingestPublishFailed();
+            publishFailures.increment();
             throw e;
         }
-        Duration publishTime = Duration.between(start, clock.instant());
+        Duration took = Duration.between(start, clock.instant());
 
-        metrics.ingestPublished(publishTime);
-        metrics.ingestAccepted(stamped.size());
-        log.info("Ingest accepted events={} publishMs={}", stamped.size(), publishTime.toMillis());
+        publishTime.record(took);
+        acceptedEvents.increment(stamped.size());
+        log.info("Ingest accepted events={} publishMs={}", stamped.size(), took.toMillis());
         return stamped.size();
     }
 

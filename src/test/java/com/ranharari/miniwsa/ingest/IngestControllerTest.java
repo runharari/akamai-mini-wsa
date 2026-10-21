@@ -1,8 +1,8 @@
 package com.ranharari.miniwsa.ingest;
 
-import com.ranharari.miniwsa.common.error.FieldError;
-import com.ranharari.miniwsa.common.error.InvalidRequestException;
-import com.ranharari.miniwsa.common.error.PublishFailedException;
+import com.ranharari.miniwsa.common.exception.Violation;
+import com.ranharari.miniwsa.common.exception.InvalidRequestException;
+import com.ranharari.miniwsa.common.exception.PublishFailedException;
 import com.ranharari.miniwsa.support.TestEvents;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,8 +43,8 @@ class IngestControllerTest {
     @Test
     void returns400WithPerEventFieldErrors() throws Exception {
         when(ingestService.ingest(any())).thenThrow(new InvalidRequestException(List.of(
-                FieldError.ofEvent(0, "rule.severity", "must not be null"),
-                FieldError.ofEvent(2, "action", "must be one of DENY, ALERT, MONITOR"))));
+                Violation.ofEvent(0, "rule.severity", "must not be null"),
+                Violation.ofEvent(2, "action", "must be one of DENY, ALERT, MONITOR"))));
 
         mockMvc.perform(post("/v1/events/ingest").contentType(MediaType.APPLICATION_JSON).content("[{},{},{}]"))
                 .andExpect(status().isBadRequest())

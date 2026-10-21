@@ -1,10 +1,11 @@
 package com.ranharari.miniwsa.sink;
 
-import com.ranharari.miniwsa.common.error.StorageException;
-import com.ranharari.miniwsa.common.event.EnrichedEvent;
-import com.ranharari.miniwsa.common.kafka.Topics;
-import com.ranharari.miniwsa.common.metrics.PipelineMetrics;
+import com.ranharari.miniwsa.common.config.Topics;
+import com.ranharari.miniwsa.common.exception.StorageException;
+import com.ranharari.miniwsa.common.metrics.MicrometerMetricsFactory;
+import com.ranharari.miniwsa.common.model.EnrichedEvent;
 import com.ranharari.miniwsa.support.TestEvents;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -12,11 +13,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
@@ -29,44 +30,46 @@ class EnrichedEventListenerTest {
 
     @Mock
     private EventWriter writer;
-    @Mock
-    private PipelineMetrics metrics;
 
+    private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
     private final Clock clock = Clock.fixed(Instant.parse("2026-05-20T15:00:00Z"), ZoneOffset.UTC);
 
     private EnrichedEventListener listener() {
-        return new EnrichedEventListener(writer, metrics, clock);
+        return new EnrichedEventListener(writer, new MicrometerMetricsFactory(meters), clock);
     }
 
     @Test
-    void insertsWholeBatchOnceAndRecordsIt() {
+    void insertsWholeBatchOnceAndRecordsBatchSize() {
         EnrichedEvent a = TestEvents.enriched("a");
         EnrichedEvent b = TestEvents.enriched("b");
 
         listener().onBatch(List.of(record(a), record(b)));
 
         verify(writer).insert(List.of(a, b));
-        verify(metrics).sinkBatchInserted(2, Duration.ZERO);
-        verifyNoMoreInteractions(writer, metrics);
+        verifyNoMoreInteractions(writer);
+        assertThat(meters.get("wsa.sink.batch.size").summary().totalAmount()).isEqualTo(2);
+        assertThat(meters.get("wsa.sink.insert").timer().count()).isEqualTo(1);
+        assertThat(meters.get("wsa.sink.skipped").counter().count()).isZero();
     }
 
     @Test
-    void skipsUnreadableMessagesAndInsertsTheRest() {
+    void skipsUnreadableMessagesCountsThemAndInsertsTheRest() {
         EnrichedEvent a = TestEvents.enriched("a");
 
         listener().onBatch(List.of(record(null), record(a)));
 
-        verify(metrics).sinkSkipped(1);
         verify(writer).insert(List.of(a));
-        verify(metrics).sinkBatchInserted(1, Duration.ZERO);
+        assertThat(meters.get("wsa.sink.skipped").counter().count()).isEqualTo(1);
+        assertThat(meters.get("wsa.sink.batch.size").summary().totalAmount()).isEqualTo(1);
     }
 
     @Test
     void doesNotInsertWhenEveryMessageIsUnreadable() {
         listener().onBatch(List.of(record(null)));
 
-        verify(metrics).sinkSkipped(1);
         verifyNoInteractions(writer);
+        assertThat(meters.get("wsa.sink.skipped").counter().count()).isEqualTo(1);
+        assertThat(meters.get("wsa.sink.insert").timer().count()).isZero();
     }
 
     @Test
@@ -76,8 +79,8 @@ class EnrichedEventListenerTest {
 
         assertThatThrownBy(() -> listener().onBatch(List.of(record(TestEvents.enriched("a"))))).isSameAs(failure);
 
-        verify(metrics).sinkInsertFailed();
-        verifyNoMoreInteractions(metrics);
+        assertThat(meters.get("wsa.sink.insert.failures").counter().count()).isEqualTo(1);
+        assertThat(meters.get("wsa.sink.insert").timer().count()).isZero();
     }
 
     private static ConsumerRecord<String, EnrichedEvent> record(EnrichedEvent value) {

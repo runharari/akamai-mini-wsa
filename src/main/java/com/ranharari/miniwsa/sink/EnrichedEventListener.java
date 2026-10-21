@@ -1,9 +1,12 @@
 package com.ranharari.miniwsa.sink;
 
-import com.ranharari.miniwsa.common.error.StorageException;
-import com.ranharari.miniwsa.common.event.EnrichedEvent;
-import com.ranharari.miniwsa.common.kafka.Topics;
-import com.ranharari.miniwsa.common.metrics.PipelineMetrics;
+import com.ranharari.miniwsa.common.config.Topics;
+import com.ranharari.miniwsa.common.exception.StorageException;
+import com.ranharari.miniwsa.common.metrics.MetricsFactory;
+import com.ranharari.miniwsa.common.model.EnrichedEvent;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.Timer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,13 +31,20 @@ public class EnrichedEventListener {
     private static final Logger log = LoggerFactory.getLogger(EnrichedEventListener.class);
 
     private final EventWriter writer;
-    private final PipelineMetrics metrics;
     private final Clock clock;
 
-    public EnrichedEventListener(EventWriter writer, PipelineMetrics metrics, Clock clock) {
+    private final DistributionSummary batchSize;
+    private final Timer insertTime;
+    private final Counter insertFailures;
+    private final Counter skippedMessages;
+
+    public EnrichedEventListener(EventWriter writer, MetricsFactory metrics, Clock clock) {
         this.writer = writer;
-        this.metrics = metrics;
         this.clock = clock;
+        this.batchSize = metrics.summary("sink.batch.size", "Events per ClickHouse insert");
+        this.insertTime = metrics.timer("sink.insert", "Time of one ClickHouse batch insert");
+        this.insertFailures = metrics.counter("sink.insert.failures", "Failed ClickHouse inserts (the batch is retried)");
+        this.skippedMessages = metrics.counter("sink.skipped", "Unreadable messages skipped by the sink");
     }
 
     @KafkaListener(id = "clickhouse-sink", topics = Topics.ENRICHED, batch = "true",
@@ -47,7 +57,7 @@ public class EnrichedEventListener {
                 .toList();
         int skipped = records.size() - events.size();
         if (skipped > 0) {
-            metrics.sinkSkipped(skipped);
+            skippedMessages.increment(skipped);
             log.warn("Sink skipped unreadable messages count={}", skipped);
         }
         if (events.isEmpty()) {
@@ -58,11 +68,12 @@ public class EnrichedEventListener {
         try {
             writer.insert(events);
         } catch (StorageException e) {
-            metrics.sinkInsertFailed();
+            insertFailures.increment();
             throw e; // the container's error handler logs it and retries the batch with backoff
         }
-        Duration insertTime = Duration.between(start, clock.instant());
-        metrics.sinkBatchInserted(events.size(), insertTime);
-        log.info("Sink inserted events={} insertMs={}", events.size(), insertTime.toMillis());
+        Duration took = Duration.between(start, clock.instant());
+        batchSize.record(events.size());
+        insertTime.record(took);
+        log.info("Sink inserted events={} insertMs={}", events.size(), took.toMillis());
     }
 }

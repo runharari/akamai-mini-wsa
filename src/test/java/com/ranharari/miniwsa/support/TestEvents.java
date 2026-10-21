@@ -1,12 +1,12 @@
 package com.ranharari.miniwsa.support;
 
-import com.ranharari.miniwsa.common.event.Action;
-import com.ranharari.miniwsa.common.event.Category;
-import com.ranharari.miniwsa.common.event.EnrichedEvent;
-import com.ranharari.miniwsa.common.event.GeoLocation;
-import com.ranharari.miniwsa.common.event.Rule;
-import com.ranharari.miniwsa.common.event.SecurityEvent;
-import com.ranharari.miniwsa.common.event.Severity;
+import com.ranharari.miniwsa.common.model.Action;
+import com.ranharari.miniwsa.common.model.Category;
+import com.ranharari.miniwsa.common.model.EnrichedEvent;
+import com.ranharari.miniwsa.common.model.GeoLocation;
+import com.ranharari.miniwsa.common.model.Rule;
+import com.ranharari.miniwsa.common.model.SecurityEvent;
+import com.ranharari.miniwsa.common.model.Severity;
 
 import java.time.Instant;
 

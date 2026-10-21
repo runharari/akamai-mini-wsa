@@ -1,4 +1,4 @@
-package com.ranharari.miniwsa.common.event;
+package com.ranharari.miniwsa.common.model;
 
 public enum Severity {
     CRITICAL,

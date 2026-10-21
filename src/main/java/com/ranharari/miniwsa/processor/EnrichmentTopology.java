@@ -1,8 +1,8 @@
 package com.ranharari.miniwsa.processor;
 
-import com.ranharari.miniwsa.common.event.EnrichedEvent;
-import com.ranharari.miniwsa.common.event.SecurityEvent;
-import com.ranharari.miniwsa.common.kafka.Topics;
+import com.ranharari.miniwsa.common.model.EnrichedEvent;
+import com.ranharari.miniwsa.common.model.SecurityEvent;
+import com.ranharari.miniwsa.common.config.Topics;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.StreamsBuilder;

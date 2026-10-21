@@ -1,9 +1,9 @@
 package com.ranharari.miniwsa.sink;
 
-import com.ranharari.miniwsa.common.error.StorageException;
-import com.ranharari.miniwsa.common.event.EnrichedEvent;
-import com.ranharari.miniwsa.common.event.GeoLocation;
-import com.ranharari.miniwsa.common.event.SecurityEvent;
+import com.ranharari.miniwsa.common.exception.StorageException;
+import com.ranharari.miniwsa.common.model.EnrichedEvent;
+import com.ranharari.miniwsa.common.model.GeoLocation;
+import com.ranharari.miniwsa.common.model.SecurityEvent;
 import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;

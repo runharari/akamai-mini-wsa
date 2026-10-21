@@ -1,7 +1,7 @@
 package com.ranharari.miniwsa.sink;
 
-import com.ranharari.miniwsa.common.error.StorageException;
-import com.ranharari.miniwsa.common.event.EnrichedEvent;
+import com.ranharari.miniwsa.common.exception.StorageException;
+import com.ranharari.miniwsa.common.model.EnrichedEvent;
 
 import java.util.List;
 

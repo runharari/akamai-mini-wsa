@@ -1,7 +1,7 @@
 package com.ranharari.miniwsa.ingest;
 
-import com.ranharari.miniwsa.common.error.InvalidRequestException;
-import com.ranharari.miniwsa.common.error.PublishFailedException;
+import com.ranharari.miniwsa.common.exception.InvalidRequestException;
+import com.ranharari.miniwsa.common.exception.PublishFailedException;
 import tools.jackson.databind.JsonNode;
 
 public interface IngestService {

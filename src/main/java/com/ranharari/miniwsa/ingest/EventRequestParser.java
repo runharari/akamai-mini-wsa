@@ -1,7 +1,7 @@
 package com.ranharari.miniwsa.ingest;
 
-import com.ranharari.miniwsa.common.error.InvalidRequestException;
-import com.ranharari.miniwsa.common.event.SecurityEvent;
+import com.ranharari.miniwsa.common.exception.InvalidRequestException;
+import com.ranharari.miniwsa.common.model.SecurityEvent;
 import tools.jackson.databind.JsonNode;
 
 import java.util.List;

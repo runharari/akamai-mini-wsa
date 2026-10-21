@@ -1,4 +1,4 @@
-package com.ranharari.miniwsa.common.error;
+package com.ranharari.miniwsa.common.exception;
 
 /** Kafka didn't acknowledge the events in time. Mapped to 503 so the client retries later. */
 public class PublishFailedException extends RuntimeException {

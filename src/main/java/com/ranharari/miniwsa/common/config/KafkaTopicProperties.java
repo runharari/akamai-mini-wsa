@@ -1,4 +1,4 @@
-package com.ranharari.miniwsa.common.kafka;
+package com.ranharari.miniwsa.common.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;

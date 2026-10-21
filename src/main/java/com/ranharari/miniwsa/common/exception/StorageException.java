@@ -1,4 +1,4 @@
-package com.ranharari.miniwsa.common.error;
+package com.ranharari.miniwsa.common.exception;
 
 /** A ClickHouse read or write failed. */
 public class StorageException extends RuntimeException {

@@ -1,9 +1,10 @@
 package com.ranharari.miniwsa.ingest;
 
-import com.ranharari.miniwsa.common.error.FieldError;
-import com.ranharari.miniwsa.common.error.InvalidRequestException;
-import com.ranharari.miniwsa.common.event.Action;
-import com.ranharari.miniwsa.common.event.SecurityEvent;
+import com.ranharari.miniwsa.ingest.config.IngestProperties;
+import com.ranharari.miniwsa.common.exception.Violation;
+import com.ranharari.miniwsa.common.exception.InvalidRequestException;
+import com.ranharari.miniwsa.common.model.Action;
+import com.ranharari.miniwsa.common.model.SecurityEvent;
 import com.ranharari.miniwsa.support.TestEvents;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
@@ -79,8 +80,8 @@ class JsonEventRequestParserTest {
         ((ObjectNode) event.get("rule")).remove("severity");
 
         assertThat(errorsFor(event)).containsExactly(
-                FieldError.ofEvent(0, "clientIp", "must not be blank"),
-                FieldError.ofEvent(0, "rule.severity", "must not be null"));
+                Violation.ofEvent(0, "clientIp", "must not be blank"),
+                Violation.ofEvent(0, "rule.severity", "must not be null"));
     }
 
     @Test
@@ -88,14 +89,14 @@ class JsonEventRequestParserTest {
         ObjectNode event = validEvent("e1");
         ((ObjectNode) event.get("rule")).put("category", "PHISHING");
 
-        assertThat(errorsFor(event)).containsExactly(FieldError.ofEvent(0, "rule.category",
+        assertThat(errorsFor(event)).containsExactly(Violation.ofEvent(0, "rule.category",
                 "must be one of INJECTION, XSS, PROTOCOL_VIOLATION, DATA_LEAKAGE, BOT, DOS, RATE_LIMIT"));
     }
 
     @Test
     void rejectsLowercaseAndNumericEnums() {
-        assertThat(errorsFor(validEvent("e1").put("action", "deny"))).extracting(FieldError::field).containsExactly("action");
-        assertThat(errorsFor(validEvent("e1").put("action", 0))).extracting(FieldError::field).containsExactly("action");
+        assertThat(errorsFor(validEvent("e1").put("action", "deny"))).extracting(Violation::field).containsExactly("action");
+        assertThat(errorsFor(validEvent("e1").put("action", 0))).extracting(Violation::field).containsExactly("action");
     }
 
     @Test
@@ -103,9 +104,9 @@ class JsonEventRequestParserTest {
         String message = "must be an ISO-8601 timestamp with a zone, e.g. 2026-05-20T14:32:10Z";
 
         assertThat(errorsFor(validEvent("e1").put("timestamp", "2026-05-20T14:32:10")))
-                .containsExactly(FieldError.ofEvent(0, "timestamp", message));
+                .containsExactly(Violation.ofEvent(0, "timestamp", message));
         assertThat(errorsFor(validEvent("e1").put("timestamp", 1747751530)))
-                .containsExactly(FieldError.ofEvent(0, "timestamp", message));
+                .containsExactly(Violation.ofEvent(0, "timestamp", message));
     }
 
     @Test
@@ -117,7 +118,7 @@ class JsonEventRequestParserTest {
 
         InvalidRequestException e = catchThrowableOfType(InvalidRequestException.class, () -> parser.parse(array));
 
-        assertThat(e.errors()).extracting(FieldError::index, FieldError::field)
+        assertThat(e.violations()).extracting(Violation::index, Violation::field)
                 .containsExactly(tuple(1, "action"), tuple(2, "path"));
     }
 
@@ -132,7 +133,7 @@ class JsonEventRequestParserTest {
         assertThat(messageOf(tooMany)).isEqualTo("batch has 4 events, the maximum is 3");
         assertThat(messageOf(jsonMapper.getNodeFactory().stringNode("hello"))).isEqualTo("body must be a JSON object or array");
         assertThat(errorsFor(jsonMapper.createArrayNode().add(42)))
-                .containsExactly(FieldError.ofEvent(0, null, "event must be a JSON object"));
+                .containsExactly(Violation.ofEvent(0, null, "event must be a JSON object"));
     }
 
     private ObjectNode validEvent(String eventId) {
@@ -140,8 +141,8 @@ class JsonEventRequestParserTest {
         return node.put("eventId", eventId);
     }
 
-    private List<FieldError> errorsFor(JsonNode body) {
-        return catchThrowableOfType(InvalidRequestException.class, () -> parser.parse(body)).errors();
+    private List<Violation> errorsFor(JsonNode body) {
+        return catchThrowableOfType(InvalidRequestException.class, () -> parser.parse(body)).violations();
     }
 
     private String messageOf(JsonNode body) {

@@ -1,8 +1,9 @@
 package com.ranharari.miniwsa.ingest;
 
-import com.ranharari.miniwsa.common.error.FieldError;
-import com.ranharari.miniwsa.common.error.InvalidRequestException;
-import com.ranharari.miniwsa.common.event.SecurityEvent;
+import com.ranharari.miniwsa.ingest.config.IngestProperties;
+import com.ranharari.miniwsa.common.exception.Violation;
+import com.ranharari.miniwsa.common.exception.InvalidRequestException;
+import com.ranharari.miniwsa.common.model.SecurityEvent;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import org.springframework.context.annotation.Profile;
@@ -42,9 +43,9 @@ public class JsonEventRequestParser implements EventRequestParser {
         List<JsonNode> nodes = toEventNodes(body);
 
         List<SecurityEvent> events = new ArrayList<>();
-        List<FieldError> errors = new ArrayList<>();
+        List<Violation> errors = new ArrayList<>();
         for (int index = 0; index < nodes.size(); index++) {
-            List<FieldError> eventErrors = new ArrayList<>();
+            List<Violation> eventErrors = new ArrayList<>();
             SecurityEvent event = convert(index, nodes.get(index), eventErrors);
             if (event != null) {
                 eventErrors.addAll(validate(index, event));
@@ -64,45 +65,45 @@ public class JsonEventRequestParser implements EventRequestParser {
 
     private List<JsonNode> toEventNodes(JsonNode body) {
         if (body == null || !(body.isObject() || body.isArray())) {
-            throw new InvalidRequestException(FieldError.ofParam(null, "body must be a JSON object or array"));
+            throw new InvalidRequestException(Violation.ofParam(null, "body must be a JSON object or array"));
         }
         if (body.isObject()) {
             return List.of(body);
         }
         List<JsonNode> nodes = List.copyOf(body.values());
         if (nodes.isEmpty()) {
-            throw new InvalidRequestException(FieldError.ofParam(null, "batch must contain at least one event"));
+            throw new InvalidRequestException(Violation.ofParam(null, "batch must contain at least one event"));
         }
         if (nodes.size() > properties.maxBatchSize()) {
-            throw new InvalidRequestException(FieldError.ofParam(null,
+            throw new InvalidRequestException(Violation.ofParam(null,
                     "batch has " + nodes.size() + " events, the maximum is " + properties.maxBatchSize()));
         }
         return nodes;
     }
 
     /** Returns the event, or null after adding the conversion error. */
-    private SecurityEvent convert(int index, JsonNode node, List<FieldError> errors) {
+    private SecurityEvent convert(int index, JsonNode node, List<Violation> errors) {
         if (!node.isObject()) {
-            errors.add(FieldError.ofEvent(index, null, "event must be a JSON object"));
+            errors.add(Violation.ofEvent(index, null, "event must be a JSON object"));
             return null;
         }
         // Jackson would also accept a number here (epoch seconds); the brief asks for ISO-8601.
         JsonNode timestamp = node.get("timestamp");
         if (timestamp != null && !timestamp.isNull() && !timestamp.isString()) {
-            errors.add(FieldError.ofEvent(index, "timestamp", TIMESTAMP_MESSAGE));
+            errors.add(Violation.ofEvent(index, "timestamp", TIMESTAMP_MESSAGE));
             return null;
         }
         try {
             return jsonMapper.treeToValue(node, SecurityEvent.class);
         } catch (JacksonException e) {
-            errors.add(FieldError.ofEvent(index, fieldPath(e), conversionMessage(e)));
+            errors.add(Violation.ofEvent(index, fieldPath(e), conversionMessage(e)));
             return null;
         }
     }
 
-    private List<FieldError> validate(int index, SecurityEvent event) {
+    private List<Violation> validate(int index, SecurityEvent event) {
         return validator.validate(event).stream()
-                .map(violation -> FieldError.ofEvent(index, violation.getPropertyPath().toString(), violation.getMessage()))
+                .map(violation -> Violation.ofEvent(index, violation.getPropertyPath().toString(), violation.getMessage()))
                 .sorted((a, b) -> a.field().compareTo(b.field()))
                 .toList();
     }

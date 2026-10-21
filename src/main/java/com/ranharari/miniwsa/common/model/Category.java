@@ -1,4 +1,4 @@
-package com.ranharari.miniwsa.common.event;
+package com.ranharari.miniwsa.common.model;
 
 /** The rule category reported by the edge (rule.category). */
 public enum Category {

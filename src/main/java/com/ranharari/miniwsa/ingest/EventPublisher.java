@@ -1,7 +1,7 @@
 package com.ranharari.miniwsa.ingest;
 
-import com.ranharari.miniwsa.common.error.PublishFailedException;
-import com.ranharari.miniwsa.common.event.SecurityEvent;
+import com.ranharari.miniwsa.common.exception.PublishFailedException;
+import com.ranharari.miniwsa.common.model.SecurityEvent;
 
 import java.util.List;
 

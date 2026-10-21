@@ -1,4 +1,4 @@
-package com.ranharari.miniwsa.common.kafka;
+package com.ranharari.miniwsa.common.config;
 
 /** Kafka topic names shared by the modules. */
 public final class Topics {

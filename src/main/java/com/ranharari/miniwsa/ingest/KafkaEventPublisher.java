@@ -1,8 +1,9 @@
 package com.ranharari.miniwsa.ingest;
 
-import com.ranharari.miniwsa.common.error.PublishFailedException;
-import com.ranharari.miniwsa.common.event.SecurityEvent;
-import com.ranharari.miniwsa.common.kafka.Topics;
+import com.ranharari.miniwsa.ingest.config.IngestProperties;
+import com.ranharari.miniwsa.common.exception.PublishFailedException;
+import com.ranharari.miniwsa.common.model.SecurityEvent;
+import com.ranharari.miniwsa.common.config.Topics;
 import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;

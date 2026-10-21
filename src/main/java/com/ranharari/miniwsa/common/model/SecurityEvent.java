@@ -1,4 +1,4 @@
-package com.ranharari.miniwsa.common.event;
+package com.ranharari.miniwsa.common.model;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;

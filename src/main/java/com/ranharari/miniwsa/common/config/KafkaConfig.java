@@ -1,6 +1,6 @@
-package com.ranharari.miniwsa.common.kafka;
+package com.ranharari.miniwsa.common.config;
 
-import com.ranharari.miniwsa.common.event.EnrichedEvent;
+import com.ranharari.miniwsa.common.model.EnrichedEvent;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
