@@ -62,6 +62,16 @@ public class ClickHouseEventWriter implements EventWriter {
         }
     }
 
+    @Override
+    public boolean isAvailable() {
+        try {
+            jdbcTemplate.queryForObject("SELECT 1", Integer.class);
+            return true;
+        } catch (DataAccessException e) {
+            return false;
+        }
+    }
+
     private static void setRow(PreparedStatement ps, EnrichedEvent enriched) throws SQLException {
         SecurityEvent e = enriched.event();
         GeoLocation geo = e.geoLocation();

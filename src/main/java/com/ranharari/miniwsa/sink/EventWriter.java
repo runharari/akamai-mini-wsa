@@ -14,4 +14,7 @@ public interface EventWriter {
      * @throws StorageException if the write failed (nothing can be assumed stored)
      */
     void insert(List<EnrichedEvent> events);
+
+    /** Whether the store answers at all: tells "the store is down" apart from "this data is bad". */
+    boolean isAvailable();
 }

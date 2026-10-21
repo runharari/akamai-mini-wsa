@@ -87,4 +87,9 @@ class ClickHouseEventWriterIT {
 
         assertThat(jdbc.queryForObject("SELECT count() FROM events", Long.class)).isEqualTo(150);
     }
+
+    @Test
+    void isAvailableWhenClickHouseAnswers() {
+        assertThat(writer.isAvailable()).isTrue();
+    }
 }
