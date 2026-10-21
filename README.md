@@ -87,7 +87,22 @@ TODO (v0.6-timeseries)
 | Path contains `/admin` or `/login` | +15 |
 | More than 5 events from the same IP in the last 10 minutes (event time) | +15 |
 
-Capped at 100. Note: the highest reachable score with these rules is 90.
+Capped at 100. Note: the highest reachable score with these rules is 90; the cap guards future rules.
+
+Each event also gets an `attackType` from its `rule.category` (`INJECTION` → "SQL/Command Injection", `XSS` → "Cross-Site Scripting", `PROTOCOL_VIOLATION` → "Protocol Anomaly", `DATA_LEAKAGE` → "Data Exfiltration", `BOT` → "Bot Activity", `DOS` → "Denial of Service", `RATE_LIMIT` → "Rate Limiting").
+
+**Details:**
+- The path rule is case-insensitive (`/Admin/users` counts).
+- **Repeat offender:** the event's IP had more than 5 *earlier* events within the 10 minutes before this event. The event itself doesn't count, and an event exactly 10 minutes older still does.
+- **Event time, not arrival time:** the window uses the events' own `timestamp`. Loading 6 hours of generated events in a few seconds doesn't turn every IP into a repeat offender.
+
+**Where the window lives:**
+- In the Kafka Streams processor, as a state store (`ip-window`) keyed by IP. Events are keyed by `clientIp` in Kafka, so all events of one IP reach the same processor task, in order. The counts stay correct with any number of processor instances, with no locks and no Redis.
+- The store is local (RocksDB) and backed up to a Kafka changelog topic, so the processor remembers IPs across restarts.
+- **Bounded memory:** only the newest 6 events per IP are kept, which is enough to answer "more than 5?". A flooding IP costs the same memory as any other. IPs idle for 10 minutes are removed.
+- **Trade-off:** an event that arrives very late (older than the 6 kept events) can be under-counted.
+
+Example: 7 `CRITICAL`/`DENY` events from one IP on `/admin/users`, one minute apart. The first six score 75, and the seventh scores 90.
 
 ## Deployment
 
