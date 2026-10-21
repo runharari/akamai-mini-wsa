@@ -11,13 +11,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Each container role (Spring profile) loads its own module and nothing else; no profile loads all. */
+/**
+ * Each container role (Spring profile) loads its own module and nothing else; no profile loads all.
+ * The contexts are closed afterwards: a cached one would keep its processor and sink running and
+ * handle PipelineIT's events a second time.
+ */
+@DirtiesContext
 class RoleProfilesIT {
 
     @DynamicPropertySource
