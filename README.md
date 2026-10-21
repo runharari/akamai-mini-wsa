@@ -364,7 +364,12 @@ The workload is analytics over a huge, append-only stream: count, group by and a
 - **At-least-once, end to end:** offsets are committed only after the work is done. Duplicates are harmless: the window skips known event ids, and ClickHouse merges duplicate rows.
 - **Validate at the edge, trust inside:** ingest rejects bad requests (400, with the event index and field). It also rejects values that would break later stages, like timestamps far in the future or numbers too big for their columns. An event that still fails inside the pipeline is parked on `events.failed` instead of blocking the events behind it.
 - **One image, five roles:** each role loads only its own module (`@Profile`), so the roles scale and fail independently. With no profile, everything runs in one JVM (tests, IDE).
-- **Layers behind interfaces:** controllers → services → repositories and publishers. The scoring classes have no Spring or Kafka code in their logic, so the same classes would work in a plain consumer or a REST call.
+- **Layers behind interfaces:** controllers → services → repositories and publishers.
+- **Explicit wiring, plain classes:**
+  - Spring scans only the `@Configuration` classes, one per module in its `config` package. Each config creates every bean of its module with `new`, so reading it shows the whole wiring.
+  - `@Profile` sits once, on the config, and decides which modules a role loads.
+  - The logic (scoring, services, the sink's batch handling, the Kafka Streams topologies and state reader) is plain Java with no Spring imports, so the same classes would work in a plain consumer or another framework.
+  - Spring stays only at the edges: the configs, the controllers and error handler (Spring MVC), and the adapters to Kafka and ClickHouse (Spring Kafka's `KafkaTemplate` and listener, Spring's `JdbcClient`).
 - **Tests:**
   - Unit tests with mocks check behavior, including which calls were made and which metrics changed.
   - The Streams topology is tested in memory (`TopologyTestDriver`).
