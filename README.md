@@ -2,8 +2,6 @@
 
 A Spring Boot service that ingests web-security events (DLRs), classifies and scores them, stores them in ClickHouse, and serves statistics and samples over a REST API.
 
-> Work in progress. Sections are filled in as each milestone lands.
-
 ## Quick start
 
 Requirements: Docker (about 3 GB of memory for the whole stack).
@@ -171,37 +169,141 @@ One codebase and one Docker image. `docker compose` runs it as 4 containers, one
 
 ## Monitoring
 
-Each container exposes `/actuator/health` and `/actuator/prometheus`. The pipeline's own metrics are prefixed `wsa_`:
+Each container exposes `/actuator/health` (including ClickHouse) and `/actuator/prometheus`. The pipeline's own metrics are prefixed `wsa_`:
 
 ```bash
 curl -s localhost:8080/actuator/prometheus | grep '^wsa_'
 ```
 
-TODO (v1.0): what each metric tells you.
+**Ingest:**
+- `wsa_ingest_events_total{result="accepted"|"rejected"}`: events in, and events that failed validation.
+- `wsa_ingest_publish_seconds`: time to get Kafka's acks per request.
+- `wsa_ingest_publish_failures_total`: requests answered with 503.
+
+**Processor:**
+- `wsa_enrich_events_total`: events scored.
+- `wsa_enrich_repeat_offenders_total`: events that got the +15 bonus.
+- `wsa_enrich_threat_score`: the score distribution.
+
+**Sink:**
+- `wsa_sink_batch_size`: events per ClickHouse insert (small batches mean too many inserts).
+- `wsa_sink_insert_seconds`: insert latency.
+- `wsa_sink_insert_failures_total`: failed inserts.
+- `wsa_sink_failed_total`: events parked on `events.failed`.
+- `wsa_sink_skipped_total`: unreadable messages.
+
+**For free:**
+- HTTP latency per endpoint (`http_server_requests_seconds`).
+- JVM metrics.
+- Kafka client and Streams metrics, including consumer lag (`kafka_consumer_fetch_manager_records_lag_max`). Lag is the first thing to watch: it grows when the processor or sink can't keep up.
 
 ## Architecture
 
-TODO: diagram + write and read paths.
+```mermaid
+flowchart LR
+    C[Client / generator] -->|POST /v1/events/ingest| I[ingest]
+    I -->|key = clientIp| R[(events.raw)]
+    R --> P[processor<br/>Kafka Streams]
+    P <-->|per-IP window| S[(state store ip-window<br/>RocksDB + changelog)]
+    P --> E[(events.enriched)]
+    P -. bad events .-> F[(events.failed)]
+    E --> K[sink<br/>batch consumer]
+    K -->|one INSERT per batch| DB[(ClickHouse<br/>events)]
+    K -. refused events .-> F
+    Q[query] -->|SQL aggregations| DB
+    U[Dashboard / analyst] -->|GET /v1/stats/summary<br/>GET /v1/events/samples| Q
+```
+
+One image runs as four containers (Spring profiles), plus Kafka (KRaft, single broker) and ClickHouse.
+
+**Write path:**
+1. `ingest` validates the request and produces each event to `events.raw`, keyed by `clientIp`, with `acks=all`. It answers 201 only after Kafka has stored the events, and 503 if Kafka is down.
+2. The `processor` (Kafka Streams) reads `events.raw`, looks up the IP's recent events in its state store, and scores the event. It writes the result to `events.enriched`.
+3. The `sink` polls up to 1,000 enriched events and writes them with one ClickHouse `INSERT`. It commits the Kafka offsets only after the insert succeeds.
+
+**Read path:** `query` runs the aggregations in ClickHouse and returns JSON. It never touches Kafka.
+
+**Scaling:**
+- Each topic has 6 partitions, so up to 6 processor and 6 sink instances can share the work (`docker compose up --scale sink=3`).
+- Kafka spreads the partitions and the per-IP state across instances by itself.
+- `ingest` and `query` are stateless, so they scale behind a load balancer.
 
 ## Why ClickHouse
 
-TODO
+The workload is analytics over a huge, append-only stream: count, group by and average over millions or billions of events in a time range, plus fetching a few raw rows. That's what a columnar OLAP database is built for.
+
+- **Reads only what a query needs:** "events by category for config X today" reads 3 columns of one config's time slice, not whole rows. The sort key `(configId, timestamp, eventId)` makes the configId and time filter a range scan.
+- **Fast aggregations:** vectorized `GROUP BY` and `avg` over billions of rows, in SQL. No counting in Java.
+- **Compression:** repetitive columns (category, action, country) shrink 10x or more. `LowCardinality` columns store small dictionaries.
+- **Cheap retention:** one partition per day, so dropping old data is a metadata operation (or a `TTL`).
+- **De-duplication:** a `ReplacingMergeTree` merges the duplicates that at-least-once delivery can create.
+
+**Trade-offs:**
+- It wants few, large inserts. That's why the sink batches.
+- Duplicates are merged in the background, not instantly.
+- No transactions, and updates are expensive. None of these matter for an event log.
+
+**Alternatives I considered:**
+- **Postgres** is simpler and fine up to tens of millions of rows, but it's a row store, so aggregating billions of rows is slow without TimescaleDB-style extras.
+- **Elasticsearch** is strong for text search, but costly in storage and memory for aggregations.
+- **Druid/Pinot** are similar to ClickHouse, with more moving parts.
 
 ## Design decisions
 
-TODO
+- **Kafka between ingest and processing:**
+  - The API only validates and hands off, so a slow database never slows ingest.
+  - Kafka is a durable buffer, and 503 is real backpressure.
+  - New consumers (alerting, archiving) can read the same topics later.
+- **Repeat offender in a Kafka Streams state store, keyed by IP:**
+  - All events of one IP are on one partition, so one task owns that IP. That means no locks and no Redis.
+  - The store survives restarts through its changelog topic.
+  - It keeps only the last 6 events per IP, so memory stays bounded even when one IP floods.
+  - A re-delivered `eventId` isn't counted twice.
+- **Event time, not arrival time:** the window uses each event's own `timestamp`, so loading hours of old events at once doesn't make every IP a repeat offender.
+- **At-least-once, end to end:** offsets are committed only after the work is done. Duplicates are harmless: the window skips known event ids, and ClickHouse merges duplicate rows.
+- **Validate at the edge, trust inside:** ingest rejects bad requests (400, with the event index and field). It also rejects values that would break later stages, like timestamps far in the future or numbers too big for their columns. An event that still fails inside the pipeline is parked on `events.failed` instead of blocking the events behind it.
+- **One image, four roles:** each role loads only its own module (`@Profile`), so the roles scale and fail independently. With no profile, everything runs in one JVM (tests, IDE).
+- **Layers behind interfaces:** controllers → services → repositories and publishers. The scoring classes have no Spring or Kafka code in their logic, so the same classes would work in a plain consumer or a REST call.
+- **Tests:**
+  - Unit tests with mocks check behavior, including which calls were made and which metrics changed.
+  - The Streams topology is tested in memory (`TopologyTestDriver`).
+  - Integration tests run against real ClickHouse and Kafka (Testcontainers), including one end-to-end test.
 
 ## What I'd improve with more time
 
-TODO
+- **Hot-IP skew:** one IP flooding fills one partition. Detect hot keys and salt them (split one IP over several partitions, then combine its counts), or route them to a separate topic.
+- **Schema:** Avro with a schema registry on the topics, for smaller messages and safe schema changes.
+- **Exactly-once:** Kafka Streams `exactly_once_v2`, plus de-duplication on insert, would remove the rare duplicate rows that queries can count until ClickHouse merges them.
+- **Query scale:** pre-aggregated tables (materialized views per minute) for the summary and time series, and one `GROUPING SETS` query instead of 5. Keyset paging for samples.
+- **Kafka message time:** the processor copies the event's timestamp into the Kafka message time. Using processing time would be cleaner for Kafka's own retention.
+- **Operations:**
+  - A Kafka health check in `/actuator/health`.
+  - Static group membership, so a redeployed processor doesn't wait about 40 s to rebalance.
+  - A replay tool for `events.failed`.
+  - ClickHouse `TTL` for retention.
+  - Replication factor 3.
+- **Errors and security:** a 503 instead of 500 when ClickHouse is down on the query API. Authentication and rate limiting on the APIs.
 
 ## What was challenging
 
-TODO
+- **The repeat-offender rule at scale.** "More than 5 events from this IP in 10 minutes" sounds simple. But it has to stay correct with several processor instances, restarts, re-delivered events and old data loaded fast.
+  - Keying Kafka by IP gives each IP a single owner, so there are no shared counters.
+  - The state store with a changelog survives restarts.
+  - Event time instead of the clock handles fast loads.
+  - Keeping the last 6 event ids handles both re-delivery and memory.
+  - I wrote the rule as a plain function (history, event) → (decision, new history), so its edge cases are unit-tested without Kafka.
+- **One bad event must not stop the pipeline.** While testing edge cases I found that Kafka 4 refuses messages dated more than an hour in the future, and ClickHouse refuses one insert spanning more than 100 daily partitions. Our retry-forever handlers would have stalled on such events.
+  - The fix has two layers. Ingest rejects values like these up front. Anything that still fails is parked on `events.failed` with its reason.
+  - The sink tells "ClickHouse is down" (retry) apart from "this event is bad" (park it) with a quick `SELECT 1`.
 
 ## One thing I learned
 
-TODO
+Kafka Streams state stores. I had used Kafka for consumers and pipelines, but not stateful stream processing. I learned the model from the Kafka Streams docs and by testing the topology in memory with `TopologyTestDriver`, then checked it against a real broker:
+- A local RocksDB store per partition.
+- A changelog topic that restores it after a restart.
+- Punctuators driven by event time.
+
+It replaced the Redis I first had in mind for the per-IP window, with less to run.
 
 ## Milestones
 
