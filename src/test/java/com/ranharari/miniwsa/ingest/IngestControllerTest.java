@@ -8,7 +8,7 @@ import com.ranharari.miniwsa.support.TestEvents;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
-import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -23,8 +23,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+/** Its own small context (not the app's module list): the controller under test and the web config. */
 @WebMvcTest
-@Import({IngestController.class, WebConfig.class})
+@ContextConfiguration(classes = {IngestController.class, WebConfig.class})
 class IngestControllerTest {
 
     @Autowired

@@ -9,7 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -30,7 +30,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** The real {@link DefaultTimeRangeResolver} runs here (with a fixed clock); only the service is mocked. */
 @WebMvcTest
-@Import({StatsController.class, StatsControllerTest.FixedClock.class, DefaultTimeRangeResolver.class, WebConfig.class})
+@ContextConfiguration(classes = {StatsController.class, DefaultTimeRangeResolver.class,
+        StatsControllerTest.FixedClock.class, WebConfig.class})
 class StatsControllerTest {
 
     private static final Instant NOW = Instant.parse("2026-05-21T10:00:00Z");

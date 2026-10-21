@@ -1,28 +1,35 @@
 package com.ranharari.miniwsa;
 
+import com.ranharari.miniwsa.alerting.config.AlertingConfig;
+import com.ranharari.miniwsa.common.config.AppConfig;
+import com.ranharari.miniwsa.common.config.KafkaSerializationConfig;
+import com.ranharari.miniwsa.common.config.KafkaStreamsConfig;
+import com.ranharari.miniwsa.common.config.KafkaTopicsConfig;
+import com.ranharari.miniwsa.common.web.config.WebConfig;
+import com.ranharari.miniwsa.enrich.config.EnrichConfig;
+import com.ranharari.miniwsa.ingest.config.IngestConfig;
+import com.ranharari.miniwsa.processor.config.ProcessorConfig;
+import com.ranharari.miniwsa.query.config.QueryConfig;
+import com.ranharari.miniwsa.sink.config.SinkConfig;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.SpringBootConfiguration;
-import org.springframework.boot.autoconfigure.AutoConfigurationExcludeFilter;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.context.TypeExcludeFilter;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.ComponentScan.Filter;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Import;
 
 /**
- * Spring finds only the {@code @Configuration} classes (one per module, in its {@code config} package).
- * They create every bean explicitly; the active profile decides which modules load. All other classes
- * are plain Java, so reading a module's config shows its whole wiring.
+ * No classpath scanning: the app is exactly these modules. Each config creates its module's beans
+ * explicitly, and its {@code @Profile} decides whether the module runs in this container.
  */
 @SpringBootConfiguration
 @EnableAutoConfiguration
-@ComponentScan(useDefaultFilters = false,
-        includeFilters = @Filter(Configuration.class),
-        // The same excludes as @SpringBootApplication, so test slices (@WebMvcTest) still work.
-        excludeFilters = {
-                @Filter(type = FilterType.CUSTOM, classes = TypeExcludeFilter.class),
-                @Filter(type = FilterType.CUSTOM, classes = AutoConfigurationExcludeFilter.class)})
+@Import({
+        AppConfig.class, WebConfig.class,
+        KafkaTopicsConfig.class, KafkaSerializationConfig.class, KafkaStreamsConfig.class,
+        IngestConfig.class,
+        EnrichConfig.class, ProcessorConfig.class,
+        SinkConfig.class,
+        QueryConfig.class,
+        AlertingConfig.class})
 public class MiniWsaApplication {
 
     public static void main(String[] args) {
