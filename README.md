@@ -84,7 +84,29 @@ Status codes: **201** stored in Kafka · **400** invalid request · **503** Kafk
 `receivedAt` is always set by the server. Every response carries an `X-Request-Id` header, which also appears in the logs.
 
 ### Stats summary
-TODO (v0.3-stats)
+
+`GET /v1/stats/summary?configId=&from=&to=` (on the query container, port 8081). All parameters are optional:
+- `configId`: without it, all configs are counted.
+- `from` / `to`: ISO-8601 UTC. `from` is inclusive and `to` exclusive. Without them, the range is the last 24 hours; `from` must be before `to`.
+
+```bash
+curl -s 'localhost:8081/v1/stats/summary?configId=777'
+```
+```json
+{"configId":777,"timeRange":{"from":"2026-10-20T14:29:24Z","to":"2026-10-21T14:29:24Z"},"totalEvents":8,
+ "byCategory":{"INJECTION":{"count":7,"avgThreatScore":77.1},"BOT":{"count":1,"avgThreatScore":10.0}},
+ "byAction":{"DENY":7,"MONITOR":1},
+ "topAttackers":[{"clientIp":"203.0.113.9","count":7,"avgThreatScore":77.1},{"clientIp":"198.51.100.5","count":1,"avgThreatScore":10.0}],
+ "topTargetedPaths":[{"path":"/admin/users","count":7},{"path":"/products","count":1}]}
+```
+
+**Details:**
+- Every aggregation runs in ClickHouse.
+- Averages are rounded to one decimal.
+- Categories and actions appear only if they have events, biggest first.
+- The top lists hold up to 10 entries, sorted by count. Ties sort by IP or path as text.
+- The summary is 5 small queries, one per block. Inserts landing between them can make the blocks differ by a few events. At scale, one query with `GROUPING SETS`, or pre-aggregated tables, would fix both the consistency and the cost.
+- **No `FINAL`:** a batch the sink re-delivers is counted twice until ClickHouse merges the duplicates in the background. `FINAL` would slow every query.
 
 ### Samples
 TODO (v0.4-samples)
