@@ -27,6 +27,20 @@ Build and test the app without Docker: Java 25, then `./mvnw test` (unit tests, 
 
 Rows become queryable about a second after the 201.
 
+### When something fails
+
+- **Kafka down:** ingest answers 503 with `Retry-After`. Nothing is half-stored that the client doesn't know about.
+- **ClickHouse down:** the sink retries the batch with growing pauses (up to 30 s), forever. Events wait in Kafka, and nothing is lost.
+- **A bad event** never blocks the events behind it. It's parked on the `events.failed` topic, with the reason in the message headers:
+  - The processor parks messages it can't read or enrich, using Kafka Streams' built-in dead-letter handling (`errors.dead.letter.queue.topic.name`).
+  - The sink parks events ClickHouse refuses while it's otherwise up. When a batch insert fails, it checks with `SELECT 1`: if ClickHouse is down, it retries the batch; if it's up, it inserts the events one by one and parks the ones that fail. The metric is `wsa_sink_failed_total`.
+  - The parked event is the original one, so it can be replayed into `events.raw` once the cause is fixed.
+
+```bash
+docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 \
+  --topic events.failed --from-beginning --formatter-property print.headers=true
+```
+
 ## API
 
 ### Ingest
