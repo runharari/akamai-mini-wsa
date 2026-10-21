@@ -401,7 +401,7 @@ Most important first.
 2. **High availability and retention.**
    - **Kafka:** replication factor 3 with `min.insync.replicas=2`.
    - **ClickHouse:** a replicated table, sharded by `configId` behind a distributed table.
-   - **Retention:** `TTL` on the hot data, with old days moved to Parquet on S3 as a cheap cold tier (still queryable with Trino or Athena, or ClickHouse itself).
+   - **Retention:** `TTL` on the table and on the topics.
 3. **Alerts on the system itself.**
    - The metrics exist; next come Prometheus alert rules (lag growing, 503 rate, events parked on `events.failed`, insert failures) and a Grafana dashboard per role.
 4. **Query performance at scale.**
