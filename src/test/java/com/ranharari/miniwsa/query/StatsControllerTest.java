@@ -3,6 +3,7 @@ package com.ranharari.miniwsa.query;
 import com.ranharari.miniwsa.query.StatsSummary.AttackerStats;
 import com.ranharari.miniwsa.query.StatsSummary.CategoryStats;
 import com.ranharari.miniwsa.query.StatsSummary.PathStats;
+import com.ranharari.miniwsa.common.web.config.WebConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -28,8 +29,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** The real {@link DefaultTimeRangeResolver} runs here (with a fixed clock); only the service is mocked. */
-@WebMvcTest(StatsController.class)
-@Import({StatsControllerTest.FixedClock.class, DefaultTimeRangeResolver.class})
+@WebMvcTest
+@Import({StatsController.class, StatsControllerTest.FixedClock.class, DefaultTimeRangeResolver.class, WebConfig.class})
 class StatsControllerTest {
 
     private static final Instant NOW = Instant.parse("2026-05-21T10:00:00Z");

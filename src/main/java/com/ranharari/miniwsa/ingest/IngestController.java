@@ -1,6 +1,5 @@
 package com.ranharari.miniwsa.ingest;
 
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -9,7 +8,6 @@ import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
 
 @RestController
-@Profile({"ingest", "default"})
 public class IngestController {
 
     private final IngestService ingestService;

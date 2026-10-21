@@ -4,7 +4,6 @@ import com.ranharari.miniwsa.common.exception.InvalidRequestException;
 import com.ranharari.miniwsa.common.exception.Violation;
 import com.ranharari.miniwsa.common.model.Action;
 import com.ranharari.miniwsa.common.model.Category;
-import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -12,7 +11,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Instant;
 
 @RestController
-@Profile({"query", "default"})
 public class SamplesController {
 
     private static final int MAX_LIMIT = 100;

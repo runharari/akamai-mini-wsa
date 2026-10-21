@@ -1,5 +1,6 @@
 package com.ranharari.miniwsa.alerting.config;
 
+import com.ranharari.miniwsa.alerting.AlertController;
 import com.ranharari.miniwsa.alerting.AlertRule;
 import com.ranharari.miniwsa.alerting.AlertService;
 import com.ranharari.miniwsa.alerting.AlertStateReader;
@@ -48,6 +49,11 @@ public class AlertingConfig {
     @Bean
     AlertService alertService(RulePublisher publisher, AlertStateReader state, MetricsFactory metrics, Clock clock) {
         return new DefaultAlertService(publisher, state, metrics, clock);
+    }
+
+    @Bean
+    AlertController alertController(AlertService alertService) {
+        return new AlertController(alertService);
     }
 
     /** Spring passes the StreamsBuilder here before the streams start. */

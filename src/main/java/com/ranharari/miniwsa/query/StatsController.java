@@ -1,6 +1,5 @@
 package com.ranharari.miniwsa.query;
 
-import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -8,7 +7,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.time.Instant;
 
 @RestController
-@Profile({"query", "default"})
 public class StatsController {
 
     private final TimeRangeResolver timeRangeResolver;

@@ -3,10 +3,12 @@ package com.ranharari.miniwsa.ingest;
 import com.ranharari.miniwsa.common.exception.Violation;
 import com.ranharari.miniwsa.common.exception.InvalidRequestException;
 import com.ranharari.miniwsa.common.exception.PublishFailedException;
+import com.ranharari.miniwsa.common.web.config.WebConfig;
 import com.ranharari.miniwsa.support.TestEvents;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -21,7 +23,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(IngestController.class)
+@WebMvcTest
+@Import({IngestController.class, WebConfig.class})
 class IngestControllerTest {
 
     @Autowired

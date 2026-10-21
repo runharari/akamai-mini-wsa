@@ -3,9 +3,11 @@ package com.ranharari.miniwsa.alerting;
 import com.ranharari.miniwsa.alerting.AlertEvaluation.FiringAlert;
 import com.ranharari.miniwsa.common.exception.ServiceUnavailableException;
 import com.ranharari.miniwsa.common.model.Category;
+import com.ranharari.miniwsa.common.web.config.WebConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -24,7 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(AlertController.class)
+@WebMvcTest
+@Import({AlertController.class, WebConfig.class})
 class AlertControllerTest {
 
     private static final AlertRule RULE = new AlertRule("r1", "SQLi burst", Category.INJECTION, 14227L, 100, 5);

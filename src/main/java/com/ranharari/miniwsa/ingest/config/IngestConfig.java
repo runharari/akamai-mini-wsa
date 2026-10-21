@@ -5,6 +5,7 @@ import com.ranharari.miniwsa.common.model.SecurityEvent;
 import com.ranharari.miniwsa.ingest.DefaultIngestService;
 import com.ranharari.miniwsa.ingest.EventPublisher;
 import com.ranharari.miniwsa.ingest.EventRequestParser;
+import com.ranharari.miniwsa.ingest.IngestController;
 import com.ranharari.miniwsa.ingest.IngestService;
 import com.ranharari.miniwsa.ingest.JsonEventRequestParser;
 import com.ranharari.miniwsa.ingest.KafkaEventPublisher;
@@ -41,5 +42,10 @@ public class IngestConfig {
     @Bean
     IngestService ingestService(EventRequestParser parser, EventPublisher publisher, MetricsFactory metrics, Clock clock) {
         return new DefaultIngestService(parser, publisher, metrics, clock);
+    }
+
+    @Bean
+    IngestController ingestController(IngestService ingestService) {
+        return new IngestController(ingestService);
     }
 }
