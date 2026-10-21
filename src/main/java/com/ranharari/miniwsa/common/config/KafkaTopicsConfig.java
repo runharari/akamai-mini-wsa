@@ -29,4 +29,10 @@ public class KafkaTopicsConfig {
     NewTopic failedTopic() {
         return TopicBuilder.name(Topics.FAILED).partitions(PARTITIONS).replicas(REPLICAS).build();
     }
+
+    /** Few, small messages, read whole by every alerting instance: one partition is plenty. */
+    @Bean
+    NewTopic alertRulesTopic() {
+        return TopicBuilder.name(Topics.ALERT_RULES).partitions(1).replicas(REPLICAS).compact().build();
+    }
 }

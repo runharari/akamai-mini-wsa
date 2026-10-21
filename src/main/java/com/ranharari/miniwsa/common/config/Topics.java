@@ -12,6 +12,9 @@ public final class Topics {
     /** Events the processor or the sink could not handle, parked for a look and a replay to events.raw. */
     public static final String FAILED = "events.failed";
 
+    /** Alert rules, keyed by rule id. Compacted: Kafka keeps the latest version of every rule forever. */
+    public static final String ALERT_RULES = "alert.rules";
+
     private Topics() {
     }
 }
