@@ -2,6 +2,7 @@ package com.ranharari.miniwsa;
 
 import com.ranharari.miniwsa.ingest.IngestController;
 import com.ranharari.miniwsa.processor.EnrichmentTopology;
+import com.ranharari.miniwsa.query.StatsController;
 import com.ranharari.miniwsa.sink.EnrichedEventListener;
 import com.ranharari.miniwsa.support.PipelineContainers;
 import org.junit.jupiter.api.Nested;
@@ -35,6 +36,7 @@ class RoleProfilesIT {
             assertThat(context.getBeanNamesForType(IngestController.class)).hasSize(1);
             assertThat(context.getBeanNamesForType(EnrichmentTopology.class)).isEmpty();
             assertThat(context.getBeanNamesForType(EnrichedEventListener.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(StatsController.class)).isEmpty();
         }
     }
 
@@ -50,6 +52,7 @@ class RoleProfilesIT {
             assertThat(context.getBeanNamesForType(EnrichmentTopology.class)).hasSize(1);
             assertThat(context.getBeanNamesForType(IngestController.class)).isEmpty();
             assertThat(context.getBeanNamesForType(EnrichedEventListener.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(StatsController.class)).isEmpty();
         }
     }
 
@@ -65,6 +68,23 @@ class RoleProfilesIT {
             assertThat(context.getBeanNamesForType(EnrichedEventListener.class)).hasSize(1);
             assertThat(context.getBeanNamesForType(IngestController.class)).isEmpty();
             assertThat(context.getBeanNamesForType(EnrichmentTopology.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(StatsController.class)).isEmpty();
+        }
+    }
+
+    @Nested
+    @SpringBootTest
+    @ActiveProfiles("query")
+    class Query {
+        @Autowired
+        ApplicationContext context;
+
+        @Test
+        void loadsOnlyQuery() {
+            assertThat(context.getBeanNamesForType(StatsController.class)).hasSize(1);
+            assertThat(context.getBeanNamesForType(IngestController.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(EnrichmentTopology.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(EnrichedEventListener.class)).isEmpty();
         }
     }
 
@@ -79,6 +99,7 @@ class RoleProfilesIT {
             assertThat(context.getBeanNamesForType(IngestController.class)).hasSize(1);
             assertThat(context.getBeanNamesForType(EnrichmentTopology.class)).hasSize(1);
             assertThat(context.getBeanNamesForType(EnrichedEventListener.class)).hasSize(1);
+            assertThat(context.getBeanNamesForType(StatsController.class)).hasSize(1);
         }
     }
 }
