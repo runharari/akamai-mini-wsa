@@ -12,13 +12,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** The insert against a real ClickHouse: column mapping, NULLs and UTC times. */
+/** The insert against a real ClickHouse: column mapping, NULLs, UTC times and batches spanning many days. */
 class ClickHouseEventWriterIT {
 
     private final JdbcTemplate jdbc = ClickHouseTestSupport.jdbcTemplate();
@@ -68,5 +70,21 @@ class ClickHouseEventWriterIT {
         assertThat(row.get("policyId")).isEqualTo("");
         assertThat(row.get("country")).isEqualTo("");
         assertThat(row.get("userAgent")).isEqualTo("");
+    }
+
+    @Test
+    void insertsBatchSpanningMoreThanOneHundredDays() {
+        // One partition per day; without the INSERT's setting ClickHouse would refuse this batch.
+        Instant first = Instant.parse("2026-01-01T00:00:00Z");
+        List<EnrichedEvent> batch = new ArrayList<>();
+        for (int day = 0; day < 150; day++) {
+            SecurityEvent event = TestEvents.event("d" + day, "1.2.3.4", first.plus(Duration.ofDays(day)))
+                    .withReceivedAt(first);
+            batch.add(new EnrichedEvent(event, "SQL/Command Injection", 75));
+        }
+
+        writer.insert(batch);
+
+        assertThat(jdbc.queryForObject("SELECT count() FROM events", Long.class)).isEqualTo(150);
     }
 }

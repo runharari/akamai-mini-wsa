@@ -17,8 +17,10 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,8 +33,12 @@ class JsonEventRequestParserTest {
 
     private final JsonMapper jsonMapper = JsonMapper.builder().enable(EnumFeature.FAIL_ON_NUMBERS_FOR_ENUMS).build();
     private final Validator validator = VALIDATORS.getValidator();
-    private final JsonEventRequestParser parser =
-            new JsonEventRequestParser(jsonMapper, validator, new IngestProperties(3, Duration.ofSeconds(1)));
+    /** "Now" for the tests: half an hour after the sample event's timestamp. */
+    private static final Instant NOW = Instant.parse("2026-05-20T15:00:00Z");
+
+    private final JsonEventRequestParser parser = new JsonEventRequestParser(jsonMapper, validator,
+            new IngestProperties(3, Duration.ofSeconds(1), Duration.ofDays(365), Duration.ofMinutes(5)),
+            Clock.fixed(NOW, ZoneOffset.UTC));
 
     @AfterAll
     static void closeValidators() {
@@ -107,6 +113,37 @@ class JsonEventRequestParserTest {
                 .containsExactly(Violation.ofEvent(0, "timestamp", message));
         assertThat(errorsFor(validEvent("e1").put("timestamp", 1747751530)))
                 .containsExactly(Violation.ofEvent(0, "timestamp", message));
+    }
+
+    @Test
+    void rejectsTimestampTooFarInTheFutureOrTooOld() {
+        String message = "must be between 2025-05-20T15:00:00Z and 2026-05-20T15:05:00Z";
+
+        assertThat(errorsFor(validEvent("e1").put("timestamp", "2026-05-20T15:06:00Z")))
+                .containsExactly(Violation.ofEvent(0, "timestamp", message));
+        assertThat(errorsFor(validEvent("e1").put("timestamp", "2025-05-19T15:00:00Z")))
+                .containsExactly(Violation.ofEvent(0, "timestamp", message));
+    }
+
+    @Test
+    void acceptsTimestampsAtTheEdgesOfTheRange() {
+        ArrayNode array = jsonMapper.createArrayNode();
+        array.add(validEvent("future").put("timestamp", "2026-05-20T15:05:00Z"));
+        array.add(validEvent("old").put("timestamp", "2025-05-20T15:00:00Z"));
+
+        assertThat(parser.parse(array)).hasSize(2);
+    }
+
+    @Test
+    void rejectsNumbersThatDontFitTheirColumns() {
+        ObjectNode event = validEvent("e1")
+                .put("configId", 4_294_967_296L)
+                .put("statusCode", 65_536)
+                .put("requestSize", -1)
+                .put("responseSize", 4_294_967_296L);
+
+        assertThat(errorsFor(event)).extracting(Violation::field)
+                .containsExactly("configId", "requestSize", "responseSize", "statusCode");
     }
 
     @Test

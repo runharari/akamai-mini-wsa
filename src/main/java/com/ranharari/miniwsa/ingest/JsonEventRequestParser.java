@@ -13,7 +13,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.exc.InvalidFormatException;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -21,8 +23,9 @@ import java.util.stream.Collectors;
 
 /**
  * Parses each event on its own, so every error can name its event index and field.
- * Two kinds of errors: Jackson can't convert a value (bad enum, bad timestamp), or Bean Validation
- * finds a missing field. All errors of all events are collected before rejecting the request.
+ * Three kinds of errors: Jackson can't convert a value (bad enum, bad timestamp), Bean Validation
+ * finds a missing field or a number out of range, or the timestamp is outside the accepted range.
+ * All errors of all events are collected before rejecting the request.
  */
 @Component
 @Profile({"ingest", "default"})
@@ -31,24 +34,27 @@ public class JsonEventRequestParser implements EventRequestParser {
     private final JsonMapper jsonMapper;
     private final Validator validator;
     private final IngestProperties properties;
+    private final Clock clock;
 
-    public JsonEventRequestParser(JsonMapper jsonMapper, Validator validator, IngestProperties properties) {
+    public JsonEventRequestParser(JsonMapper jsonMapper, Validator validator, IngestProperties properties, Clock clock) {
         this.jsonMapper = jsonMapper;
         this.validator = validator;
         this.properties = properties;
+        this.clock = clock;
     }
 
     @Override
     public List<SecurityEvent> parse(JsonNode body) {
         List<JsonNode> nodes = toEventNodes(body);
 
+        Instant now = clock.instant().truncatedTo(ChronoUnit.SECONDS); // whole seconds read better in errors
         List<SecurityEvent> events = new ArrayList<>();
         List<Violation> errors = new ArrayList<>();
         for (int index = 0; index < nodes.size(); index++) {
             List<Violation> eventErrors = new ArrayList<>();
             SecurityEvent event = convert(index, nodes.get(index), eventErrors);
             if (event != null) {
-                eventErrors.addAll(validate(index, event));
+                eventErrors.addAll(validate(index, event, now));
             }
             if (eventErrors.isEmpty()) {
                 events.add(event);
@@ -101,11 +107,28 @@ public class JsonEventRequestParser implements EventRequestParser {
         }
     }
 
-    private List<Violation> validate(int index, SecurityEvent event) {
-        return validator.validate(event).stream()
+    private List<Violation> validate(int index, SecurityEvent event, Instant now) {
+        List<Violation> violations = validator.validate(event).stream()
                 .map(violation -> Violation.ofEvent(index, violation.getPropertyPath().toString(), violation.getMessage()))
                 .sorted((a, b) -> a.field().compareTo(b.field()))
                 .toList();
+        if (!violations.isEmpty()) {
+            return violations; // the timestamp may be missing, so check its range only on an otherwise valid event
+        }
+        return checkTimestampRange(index, event, now);
+    }
+
+    /**
+     * A timestamp far in the future or past would break the pipeline later: Kafka refuses messages
+     * dated more than an hour ahead, and Kafka Streams drops events before 1970.
+     */
+    private List<Violation> checkTimestampRange(int index, SecurityEvent event, Instant now) {
+        Instant earliest = now.minus(properties.maxEventAge());
+        Instant latest = now.plus(properties.maxClockSkew());
+        if (event.timestamp().isBefore(earliest) || event.timestamp().isAfter(latest)) {
+            return List.of(Violation.ofEvent(index, "timestamp", "must be between " + earliest + " and " + latest));
+        }
+        return List.of();
     }
 
     private static final String TIMESTAMP_MESSAGE = "must be an ISO-8601 timestamp with a zone, e.g. 2026-05-20T14:32:10Z";

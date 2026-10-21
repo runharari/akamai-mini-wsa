@@ -52,5 +52,7 @@ wsa:
   ingest:
     max-batch-size: 5000
     publish-timeout: 10s
+    max-event-age: 365d     # older event timestamps get a 400
+    max-clock-skew: 5m      # so do timestamps further in the future
   sink:
     concurrency: 3

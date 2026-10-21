@@ -50,7 +50,7 @@ curl -s -X POST localhost:8080/v1/events/ingest -H 'Content-Type: application/js
 
 An array works the same way: `-d '[{...}, {...}]'` returns `{"ingested":2}`.
 
-**Validation.** Required: `eventId`, `timestamp`, `configId`, `clientIp`, `path`, `method`, `rule.id`, `rule.severity`, `rule.category`, `action`. Enums are upper case. `timestamp` is ISO-8601 with a zone. If any event is invalid, nothing is stored, and the response lists the problems by event index and field:
+**Validation.** Required: `eventId`, `timestamp`, `configId`, `clientIp`, `path`, `method`, `rule.id`, `rule.severity`, `rule.category`, `action`. Enums are upper case. `timestamp` is ISO-8601 with a zone, at most 5 minutes in the future and at most 365 days old (`wsa.ingest.max-clock-skew`, `wsa.ingest.max-event-age`; raise the age for a one-off backfill). Numbers must fit their columns (`statusCode` 0–65535; `configId`, `requestSize`, `responseSize` 0–4294967295). These limits stop a bad value from breaking the pipeline after the 201: Kafka refuses messages dated more than an hour ahead, and Kafka Streams drops events before 1970. If any event is invalid, nothing is stored, and the response lists the problems by event index and field:
 
 ```bash
 curl -s -X POST localhost:8080/v1/events/ingest -H 'Content-Type: application/json' -d '[

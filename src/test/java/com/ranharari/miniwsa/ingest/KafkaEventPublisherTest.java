@@ -33,7 +33,7 @@ class KafkaEventPublisherTest {
     private KafkaTemplate<String, SecurityEvent> kafkaTemplate;
 
     private KafkaEventPublisher publisher() {
-        return new KafkaEventPublisher(kafkaTemplate, new IngestProperties(5000, Duration.ofMillis(200)));
+        return new KafkaEventPublisher(kafkaTemplate, new IngestProperties(5000, Duration.ofMillis(200), Duration.ofDays(365), Duration.ofMinutes(5)));
     }
 
     @Test

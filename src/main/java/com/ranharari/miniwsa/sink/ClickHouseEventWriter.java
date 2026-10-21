@@ -24,10 +24,16 @@ import java.util.List;
 @Profile({"sink", "default"})
 public class ClickHouseEventWriter implements EventWriter {
 
+    /**
+     * The table has one partition per day, and by default ClickHouse refuses an insert that touches
+     * more than 100 of them. Ingest accepts events up to a year old, so one batch may span more days:
+     * the setting turns that refusal into a warning instead of a failed (and endlessly retried) batch.
+     */
     private static final String INSERT = """
             INSERT INTO events (eventId, timestamp, receivedAt, configId, policyId, clientIp, hostname, path,
                                 method, statusCode, userAgent, ruleId, ruleName, ruleMessage, severity, category,
                                 action, country, city, requestSize, responseSize, attackType, threatScore)
+            SETTINGS throw_on_max_partitions_per_insert_block = 0
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
 
