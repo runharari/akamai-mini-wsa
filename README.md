@@ -17,7 +17,9 @@ curl -s localhost:8080/actuator/health
 - Query APIs: `localhost:8081` (the `query` container)
 - ClickHouse HTTP: `localhost:8123` (user `wsa`, password `wsa`)
 
-Build and test the app without Docker: Java 25, then `./mvnw test` (unit tests, seconds) or `./mvnw verify` (adds the integration tests, which need Docker for Testcontainers).
+Build and test the app without Docker: Java 25, then `./mvnw test` (unit tests, seconds) or `./mvnw verify` (adds the integration tests, which need Docker for Testcontainers). The integration tests include `PipelineIT`, an end-to-end test against real Kafka and ClickHouse:
+- It posts an attack wave and a calm event to the ingest API.
+- It waits until they're queryable, then checks the summary numbers (including the +15 repeat-offender score), the samples order, filter and total, a 400, and the `wsa_*` metrics.
 
 ## How it works, in three lines
 
@@ -109,7 +111,30 @@ curl -s 'localhost:8081/v1/stats/summary?configId=777'
 - **No `FINAL`:** a batch the sink re-delivers is counted twice until ClickHouse merges the duplicates in the background. `FINAL` would slow every query.
 
 ### Samples
-TODO (v0.4-samples)
+
+`GET /v1/events/samples?configId=&from=&to=&category=&action=&limit=&offset=` (port 8081). Every filter is optional:
+- `configId`, `from` and `to` work as in the summary.
+- `category` and `action` take the upper-case enum values.
+- `limit` is 1 to 100, default 20. `offset` is 0 or more.
+- Results are newest first, with `eventId` breaking ties so paging is stable.
+- `total` counts every match, not just this page.
+
+```bash
+curl -s 'localhost:8081/v1/events/samples?configId=777&category=INJECTION&limit=2'
+```
+```json
+{"total":7,"limit":2,"offset":0,"events":[
+  {"eventId":"s15198-6","timestamp":"2026-10-21T14:24:53Z","receivedAt":"2026-10-21T14:28:53.913Z","configId":777,
+   "policyId":null,"clientIp":"203.0.113.9","hostname":null,"path":"/admin/users","method":"POST","statusCode":null,
+   "userAgent":null,"rule":{"id":"1","name":null,"message":null,"severity":"CRITICAL","category":"INJECTION"},
+   "action":"DENY","geoLocation":null,"requestSize":null,"responseSize":null,
+   "attackType":"SQL/Command Injection","threatScore":90},
+  {"eventId":"s15198-5", ...}]}
+```
+
+Each event has the original fields plus `receivedAt`, `attackType` and `threatScore`. Optional fields that weren't sent come back as `null`.
+
+**Paging:** limit/offset is what the brief asks for. Deep offsets get slower, because ClickHouse still reads the skipped rows. At scale, keyset paging would fix that: the client sends the last `(timestamp, eventId)` it saw.
 
 ### Time series (bonus)
 TODO (v0.6-timeseries)
