@@ -366,7 +366,7 @@ The workload is analytics over a huge, append-only stream: count, group by and a
 - **One image, five roles:** each role loads only its own module (`@Profile`), so the roles scale and fail independently. With no profile, everything runs in one JVM (tests, IDE).
 - **Layers behind interfaces:** controllers → services → repositories and publishers.
 - **Explicit wiring, plain classes:**
-  - Spring scans only the `@Configuration` classes, one per module in its `config` package. Each config creates every bean of its module with `new`, so reading it shows the whole wiring.
+  - No classpath scanning: `MiniWsaApplication` lists the module configs with `@Import`, one per module in its `config` package. Each config creates every bean of its module with `new`, so reading it shows the whole wiring.
   - `@Profile` sits once, on the config, and decides which modules a role loads.
   - The logic (scoring, services, the sink's batch handling, the Kafka Streams topologies and state reader) is plain Java with no Spring imports, so the same classes would work in a plain consumer or another framework.
   - Spring stays only at the edges: the configs, the controllers and error handler (Spring MVC), and the adapters to Kafka and ClickHouse (Spring Kafka's `KafkaTemplate` and listener, Spring's `JdbcClient`).
