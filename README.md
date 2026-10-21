@@ -351,6 +351,10 @@ The workload is analytics over a huge, append-only stream: count, group by and a
 
 ## Design decisions
 
+- **ClickHouse for storage:** an open-source columnar database, picked for the queries the brief requires.
+  - Counts, `GROUP BY` category and action, average scores, and top 10 IPs and paths, all per config and time range, plus filtered samples, newest first.
+  - Those are aggregations over many rows but few columns, which is exactly what a columnar engine is fast at.
+  - The details are under "Why ClickHouse".
 - **Kafka between ingest and processing:**
   - The API only validates and hands off, so a slow database never slows ingest.
   - Kafka is a durable buffer, and 503 is real backpressure.
