@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: mini-wsa
+  threads:
+    virtual:
+      enabled: true
