@@ -31,9 +31,9 @@ public class KafkaSerializationConfig {
 
     @Bean
     DefaultKafkaConsumerFactoryCustomizer jsonValueDeserializer(JsonMapper jsonMapper) {
-        // Only the sink consumes with a listener, and it reads EnrichedEvent.
+        // Only the sink consumes with a Spring Kafka listener, and it reads EnrichedEvent.
         // ErrorHandlingDeserializer turns an unreadable message into a null value instead of an
-        // endless failure loop; the listener counts and skips it.
+        // endless failure loop; EventSink counts and skips it.
         return factory -> valueDeserializer(factory, () -> new ErrorHandlingDeserializer<>(
                 new JacksonJsonDeserializer<>(EnrichedEvent.class, jsonMapper, false)));
     }

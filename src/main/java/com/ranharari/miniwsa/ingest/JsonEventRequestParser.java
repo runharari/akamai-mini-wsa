@@ -3,7 +3,6 @@ package com.ranharari.miniwsa.ingest;
 import com.ranharari.miniwsa.common.exception.Violation;
 import com.ranharari.miniwsa.common.exception.InvalidRequestException;
 import com.ranharari.miniwsa.common.model.SecurityEvent;
-import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;

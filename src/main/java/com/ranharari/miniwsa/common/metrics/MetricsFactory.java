@@ -5,7 +5,7 @@ import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Timer;
 
 /**
- * Creates the meters a component needs. Each component creates its own meters in its constructor
+ * Creates the meters a class needs. Each class creates its own meters in its constructor
  * and updates them where things happen. All names get the {@code wsa.} prefix.
  * Tests pass a factory backed by an in-memory registry and assert the meter values.
  */
