@@ -49,8 +49,6 @@ logging:
     level: "%5p [%X{requestId:-}]"
 
 wsa:
-  kafka:
-    partitions: 6
   ingest:
     max-batch-size: 5000
     publish-timeout: 10s
