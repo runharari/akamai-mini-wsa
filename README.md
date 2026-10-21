@@ -19,6 +19,25 @@ Build and test the app without Docker: Java 25, then `./mvnw test` (unit tests, 
 - It posts an attack wave and a calm event to the ingest API.
 - It waits until they're queryable, then checks the summary numbers (including the +15 repeat-offender score), the samples order, filter and total, a 400, and the `wsa_*` metrics.
 
+### Load test data
+
+`tools/EventGenerator.java` is a single-file program with no dependencies beyond the JDK. It makes realistic events and sends them through the real ingest API:
+
+```bash
+java tools/EventGenerator.java --count 10000 --post http://localhost:8080
+curl -s localhost:8081/v1/stats/summary        # the attack-wave IPs top the attackers list
+```
+
+- **Normal traffic:** 200 IPs with a fixed country each, 4 configs, typical paths and user agents. Rule ids and names match their category.
+- **Attack waves:** about 30% of the events. Each wave is one IP hitting one path (`/api/v1/login`, `/admin`, `/wp-login.php`) 10 to 60 times, every 2 to 20 seconds. From the 7th event of a wave on, the IP is a repeat offender and its scores jump by 15.
+- **Timestamps:** spread over the last 6 hours, so the default 24-hour window shows them. Events are sent in time order, like a real edge would send them.
+- **Options:**
+  - `--batch N`: events per request (default 500).
+  - `--seed N`: a reproducible data set.
+  - `--out events.json`: writes a JSON array to the file instead of sending it. Up to 5,000 events fits one `curl --data @events.json` request.
+
+On a laptop (Docker, 4 app containers), 10,000 events were accepted in about 1 second. A summary query over them took about 30 to 40 ms.
+
 ## How it works, in three lines
 
 1. `POST /v1/events/ingest` validates the events and writes them to the Kafka topic `events.raw`, keyed by `clientIp`. It answers **201** only after Kafka has stored them.
