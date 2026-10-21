@@ -1,12 +1,10 @@
 package com.ranharari.miniwsa.sink;
 
-import com.ranharari.miniwsa.common.config.Topics;
 import com.ranharari.miniwsa.common.exception.StorageException;
 import com.ranharari.miniwsa.common.metrics.MicrometerMetricsFactory;
 import com.ranharari.miniwsa.common.model.EnrichedEvent;
 import com.ranharari.miniwsa.support.TestEvents;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -15,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,7 +27,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class EnrichedEventListenerTest {
+class EventSinkTest {
 
     @Mock
     private EventWriter writer;
@@ -38,8 +37,8 @@ class EnrichedEventListenerTest {
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
     private final Clock clock = Clock.fixed(Instant.parse("2026-05-20T15:00:00Z"), ZoneOffset.UTC);
 
-    private EnrichedEventListener listener() {
-        return new EnrichedEventListener(writer, failedEvents, new MicrometerMetricsFactory(meters), clock);
+    private EventSink sink() {
+        return new EventSink(writer, failedEvents, new MicrometerMetricsFactory(meters), clock);
     }
 
     @Test
@@ -47,7 +46,7 @@ class EnrichedEventListenerTest {
         EnrichedEvent a = TestEvents.enriched("a");
         EnrichedEvent b = TestEvents.enriched("b");
 
-        listener().onBatch(List.of(record(a), record(b)));
+        sink().store(Arrays.asList(a, b));
 
         verify(writer).insert(List.of(a, b));
         verifyNoMoreInteractions(writer);
@@ -60,7 +59,7 @@ class EnrichedEventListenerTest {
     void skipsUnreadableMessagesCountsThemAndInsertsTheRest() {
         EnrichedEvent a = TestEvents.enriched("a");
 
-        listener().onBatch(List.of(record(null), record(a)));
+        sink().store(Arrays.asList(null, a));
 
         verify(writer).insert(List.of(a));
         assertThat(meters.get("wsa.sink.skipped").counter().count()).isEqualTo(1);
@@ -69,7 +68,7 @@ class EnrichedEventListenerTest {
 
     @Test
     void doesNotInsertWhenEveryMessageIsUnreadable() {
-        listener().onBatch(List.of(record(null)));
+        sink().store(Arrays.asList((EnrichedEvent) null));
 
         verifyNoInteractions(writer);
         assertThat(meters.get("wsa.sink.skipped").counter().count()).isEqualTo(1);
@@ -82,7 +81,7 @@ class EnrichedEventListenerTest {
         doThrow(failure).when(writer).insert(any());
         when(writer.isAvailable()).thenReturn(false);
 
-        assertThatThrownBy(() -> listener().onBatch(List.of(record(TestEvents.enriched("a"))))).isSameAs(failure);
+        assertThatThrownBy(() -> sink().store(Arrays.asList(TestEvents.enriched("a")))).isSameAs(failure);
 
         verifyNoInteractions(failedEvents);
         assertThat(meters.get("wsa.sink.insert.failures").counter().count()).isEqualTo(1);
@@ -104,7 +103,7 @@ class EnrichedEventListenerTest {
         }).when(writer).insert(any());
         when(writer.isAvailable()).thenReturn(true);
 
-        listener().onBatch(List.of(record(good), record(bad)));
+        sink().store(Arrays.asList(good, bad));
 
         verify(writer).insert(List.of(good));
         verify(failedEvents).publish(bad.event(), refused);
@@ -121,12 +120,8 @@ class EnrichedEventListenerTest {
         doThrow(failure).when(writer).insert(any());
         when(writer.isAvailable()).thenReturn(true, false);
 
-        assertThatThrownBy(() -> listener().onBatch(List.of(record(a), record(b)))).isSameAs(failure);
+        assertThatThrownBy(() -> sink().store(Arrays.asList(a, b))).isSameAs(failure);
 
         verifyNoInteractions(failedEvents);
-    }
-
-    private static ConsumerRecord<String, EnrichedEvent> record(EnrichedEvent value) {
-        return new ConsumerRecord<>(Topics.ENRICHED, 0, 0, "key", value);
     }
 }

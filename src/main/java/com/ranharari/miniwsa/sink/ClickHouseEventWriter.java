@@ -4,10 +4,8 @@ import com.ranharari.miniwsa.common.exception.StorageException;
 import com.ranharari.miniwsa.common.model.EnrichedEvent;
 import com.ranharari.miniwsa.common.model.GeoLocation;
 import com.ranharari.miniwsa.common.model.SecurityEvent;
-import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Repository;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -20,8 +18,6 @@ import java.util.List;
  * Inserts a batch with one JDBC batch statement, which the ClickHouse driver sends as a single
  * INSERT: ClickHouse wants few large inserts, not many small ones.
  */
-@Repository
-@Profile({"sink", "default"})
 public class ClickHouseEventWriter implements EventWriter {
 
     /**

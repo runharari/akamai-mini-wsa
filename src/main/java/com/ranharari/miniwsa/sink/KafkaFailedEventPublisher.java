@@ -1,13 +1,11 @@
 package com.ranharari.miniwsa.sink;
 
 import com.ranharari.miniwsa.common.config.Topics;
+import com.ranharari.miniwsa.common.exception.Exceptions;
 import com.ranharari.miniwsa.common.exception.PublishFailedException;
 import com.ranharari.miniwsa.common.model.SecurityEvent;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.springframework.context.annotation.Profile;
-import org.springframework.core.NestedExceptionUtils;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutionException;
@@ -18,8 +16,6 @@ import java.util.concurrent.TimeoutException;
  * Sends the original event (not the enriched one) to {@code events.failed}, keyed by clientIp like
  * events.raw, so it can be replayed into events.raw once the cause is fixed. The reason is in a header.
  */
-@Component
-@Profile({"sink", "default"})
 public class KafkaFailedEventPublisher implements FailedEventPublisher {
 
     static final String ERROR_HEADER = "error.message";
@@ -37,7 +33,7 @@ public class KafkaFailedEventPublisher implements FailedEventPublisher {
         ProducerRecord<String, SecurityEvent> record = new ProducerRecord<>(Topics.FAILED, event.clientIp(), event);
         record.headers().add(STAGE_HEADER, bytes("sink"));
         // The root cause holds ClickHouse's own message, e.g. which value it couldn't parse.
-        record.headers().add(ERROR_HEADER, bytes(NestedExceptionUtils.getMostSpecificCause(cause).getMessage()));
+        record.headers().add(ERROR_HEADER, bytes(Exceptions.rootCauseMessage(cause)));
         try {
             kafkaTemplate.send(record).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
