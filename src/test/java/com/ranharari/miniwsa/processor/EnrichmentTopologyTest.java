@@ -17,7 +17,9 @@ import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.TestInputTopic;
 import org.apache.kafka.streams.TestOutputTopic;
+import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.TopologyTestDriver;
+import org.apache.kafka.streams.errors.LogAndContinueProcessingExceptionHandler;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +29,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -42,6 +45,7 @@ class EnrichmentTopologyTest {
     private TopologyTestDriver driver;
     private TestInputTopic<String, SecurityEvent> raw;
     private TestOutputTopic<String, EnrichedEvent> enriched;
+    private TestOutputTopic<String, byte[]> failed;
 
     @BeforeEach
     void setUp() {
@@ -52,9 +56,10 @@ class EnrichmentTopologyTest {
 
         StreamsBuilder builder = new StreamsBuilder();
         topology.build(builder);
-        driver = new TopologyTestDriver(builder.build());
+        driver = new TopologyTestDriver(builder.build(), errorHandling());
         raw = driver.createInputTopic(Topics.RAW, Serdes.String().serializer(), serdes.raw().serializer());
         enriched = driver.createOutputTopic(Topics.ENRICHED, Serdes.String().deserializer(), serdes.enriched().deserializer());
+        failed = driver.createOutputTopic(Topics.FAILED, Serdes.String().deserializer(), Serdes.ByteArray().deserializer());
     }
 
     @AfterEach
@@ -106,6 +111,26 @@ class EnrichmentTopologyTest {
 
         assertThat(store.get(ATTACKER)).isNull();
         assertThat(store.get("198.51.100.7")).isNotNull();
+    }
+
+    @Test
+    void eventThatFailsEnrichmentGoesToTheFailedTopicAndTheNextOneStillFlows() {
+        SecurityEvent noRule = new SecurityEvent("broken", T0, 1L, null, ATTACKER, null, "/", "GET", null, null,
+                null, null, null, null, null, null);
+
+        send(noRule);
+        send(TestEvents.event("ok", ATTACKER, T0.plusSeconds(1)));
+
+        assertThat(failed.readKeyValue().key).isEqualTo(ATTACKER);
+        assertThat(enriched.readValuesToList()).extracting(e -> e.event().eventId()).containsExactly("ok");
+    }
+
+    /** The same error handling as application.yml: skip a failing event and copy it to the failed topic. */
+    private static Properties errorHandling() {
+        Properties props = new Properties();
+        props.put(StreamsConfig.PROCESSING_EXCEPTION_HANDLER_CLASS_CONFIG, LogAndContinueProcessingExceptionHandler.class);
+        props.put(StreamsConfig.ERRORS_DEAD_LETTER_QUEUE_TOPIC_NAME_CONFIG, Topics.FAILED);
+        return props;
     }
 
     private void send(SecurityEvent event) {

@@ -32,7 +32,9 @@ spring:
       application-id: mini-wsa-processor
       properties:
         num.stream.threads: 3         # up to one per partition is useful
-        deserialization.exception.handler: org.apache.kafka.streams.errors.LogAndContinueExceptionHandler   # skip (and log) unreadable messages
+        deserialization.exception.handler: org.apache.kafka.streams.errors.LogAndContinueExceptionHandler             # skip (and log) unreadable messages
+        processing.exception.handler: org.apache.kafka.streams.errors.LogAndContinueProcessingExceptionHandler      # skip (and log) events that fail enrichment
+        errors.dead.letter.queue.topic.name: events.failed   # both handlers copy the skipped message here
         auto.offset.reset: earliest
 
 management:

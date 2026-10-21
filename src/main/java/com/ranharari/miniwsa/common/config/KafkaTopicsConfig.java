@@ -24,4 +24,9 @@ public class KafkaTopicsConfig {
     NewTopic enrichedTopic() {
         return TopicBuilder.name(Topics.ENRICHED).partitions(PARTITIONS).replicas(REPLICAS).build();
     }
+
+    @Bean
+    NewTopic failedTopic() {
+        return TopicBuilder.name(Topics.FAILED).partitions(PARTITIONS).replicas(REPLICAS).build();
+    }
 }
