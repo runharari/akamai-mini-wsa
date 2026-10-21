@@ -1,11 +1,7 @@
 package com.ranharari.miniwsa.enrich;
 
 import com.ranharari.miniwsa.common.model.Category;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Component;
 
-@Component
-@Profile({"processor", "default"})
 public class DefaultAttackClassifier implements AttackClassifier {
 
     @Override

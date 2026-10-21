@@ -3,14 +3,10 @@ package com.ranharari.miniwsa.enrich;
 import com.ranharari.miniwsa.common.model.Action;
 import com.ranharari.miniwsa.common.model.SecurityEvent;
 import com.ranharari.miniwsa.common.model.Severity;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Locale;
 
-@Component
-@Profile({"processor", "default"})
 public class DefaultThreatScorer implements ThreatScorer {
 
     private static final int PATH_BONUS = 15;

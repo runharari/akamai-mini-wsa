@@ -1,8 +1,6 @@
 package com.ranharari.miniwsa.enrich;
 
 import com.ranharari.miniwsa.common.model.SecurityEvent;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -20,8 +18,6 @@ import java.util.List;
  * memory tiny even when one IP floods us. Trade-off: an event arriving very late (older than
  * the 6 kept entries) can be under-counted.
  */
-@Component
-@Profile({"processor", "default"})
 public class DefaultRepeatOffenderWindow implements RepeatOffenderWindow {
 
     static final Duration WINDOW = Duration.ofMinutes(10);
