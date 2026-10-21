@@ -7,12 +7,13 @@ A Spring Boot service that ingests web-security events (DLRs), classifies and sc
 Requirements: Docker (about 3 GB of memory for the whole stack).
 
 ```bash
-docker compose up --build -d --wait   # Kafka, ClickHouse and the app (4 roles); a few minutes the first time
+docker compose up --build -d --wait   # Kafka, ClickHouse and the app (5 roles); a few minutes the first time
 curl -s localhost:8080/actuator/health
 ```
 
 - Ingest API: `localhost:8080` (the `ingest` container)
 - Query APIs: `localhost:8081` (the `query` container)
+- Alerting API: `localhost:8082` (the `alerting` container)
 - ClickHouse HTTP: `localhost:8123` (user `wsa`, password `wsa`)
 
 Build and test the app without Docker: Java 25, then `./mvnw test` (unit tests, seconds) or `./mvnw verify` (adds the integration tests, which need Docker for Testcontainers). The integration tests include `PipelineIT`, an end-to-end test against real Kafka and ClickHouse:
@@ -153,8 +154,45 @@ Each event has the original fields plus `receivedAt`, `attackType` and `threatSc
 
 **Paging:** limit/offset is what the brief asks for. Deep offsets get slower, because ClickHouse still reads the skipped rows. At scale, keyset paging would fix that: the client sends the last `(timestamp, eventId)` it saw.
 
-### Time series (bonus)
-TODO (v0.6-timeseries)
+### Alerting (bonus)
+
+Rules like "more than 50 INJECTION events within 10 minutes", checked against events as they stream in. Port 8082.
+
+```bash
+curl -s -X POST localhost:8082/v1/alerts/define -H 'Content-Type: application/json' \
+  -d '{"name":"SQLi burst","category":"INJECTION","threshold":50,"windowMinutes":360}'
+```
+```json
+{"id":"b9e16a75-7725-4dc2-a86b-bc3a95e7f5a1","name":"SQLi burst","category":"INJECTION","configId":null,"threshold":50,"windowMinutes":360}
+```
+```bash
+curl -s localhost:8082/v1/alerts/evaluate
+```
+```json
+{"evaluatedAt":"2026-10-21T18:19:29Z","rulesChecked":1,
+ "firing":[{"ruleId":"b9e16a75-7725-4dc2-a86b-bc3a95e7f5a1","name":"SQLi burst","category":"INJECTION",
+            "configId":null,"threshold":50,"windowMinutes":360,"count":2317}]}
+```
+
+**The rule:**
+- `category`, `threshold` (0 or more) and `windowMinutes` (1 to 1440) are required. `name` and `configId` are optional; no `configId` means all configs. A bad value gets a 400.
+- A rule fires when **count > threshold**. The count covers the events whose own timestamp falls in the last `windowMinutes`, ending now.
+
+**How it works:** the `alerting` role is its own Kafka Streams app, reading `events.enriched`. No database is involved.
+- **Rules** are written to the compacted topic `alert.rules`, which acts as the rules' database: Kafka keeps the latest version of every rule. The app reads that topic into a `GlobalKTable`, so every instance has all rules.
+- **Counts:**
+  - Each event is counted per minute under its config and category (`14227|INJECTION`), and again for all configs (`*|INJECTION`).
+  - The counts live in a window store (RocksDB plus a changelog), kept for a day.
+  - Counting covers every category and config, not only those with rules, so a new rule sees the past day at once. On its first start the app reads the topic from the beginning.
+- **Evaluate** reads the rules and sums each rule's per-minute counts straight from the stores ("interactive queries"). Counts are per whole minute, so a window starts at the beginning of its first minute.
+- **Late events:** an event arriving up to a day late, from a backfill, replay or generator run, is still counted in its own minute. With Kafka Streams' default grace period, late events were silently dropped, and the counts fell far below ClickHouse's. A test now covers it.
+- **While the app is starting or rebalancing,** evaluate answers 503 with `Retry-After`.
+
+**Limits, and what's next:**
+- **One alerting instance:** with several, each instance holds only some count keys, so evaluate would have to ask the instance that owns each key (`KafkaStreams#queryMetadataForKey`, then forward the request).
+- **Pull only, as the brief asks.** The natural next step is push: check the rules whenever a count changes and publish "started firing / stopped firing" to an `alerts` topic. Something like Slack or a pager would consume that topic, and a sink could store the alert history.
+- **Duplicates:** an at-least-once replay of `events.enriched` can count an event twice.
+- **Not built:** deleting or updating rules (a tombstone or a new version on `alert.rules` would do it).
 
 ## Threat score
 
@@ -184,7 +222,7 @@ Example: 7 `CRITICAL`/`DENY` events from one IP on `/admin/users`, one minute ap
 
 ## Deployment
 
-One codebase and one Docker image. `docker compose` runs it as 4 containers, one Spring profile (role) each: `ingest`, `processor`, `sink` and `query`. Each role loads only its own module, so the roles scale and fail independently. Heavy queries never slow down ingest. With no profile set (tests, IDE), all roles run in one process.
+One codebase and one Docker image. `docker compose` runs it as 5 containers, one Spring profile (role) each: `ingest`, `processor`, `sink`, `query` and `alerting`. Each role loads only its own module, so the roles scale and fail independently. Heavy queries never slow down ingest. With no profile set (tests, IDE), all roles run in one process.
 
 ## Monitoring
 
@@ -211,6 +249,10 @@ curl -s localhost:8080/actuator/prometheus | grep '^wsa_'
 - `wsa_sink_failed_total`: events parked on `events.failed`.
 - `wsa_sink_skipped_total`: unreadable messages.
 
+**Alerting:**
+- `wsa_alerting_rules_defined_total`: rules saved.
+- `wsa_alerting_firing`: how many rules fired per evaluation.
+
 **For free:**
 - HTTP latency per endpoint (`http_server_requests_seconds`).
 - JVM metrics.
@@ -231,9 +273,14 @@ flowchart LR
     K -. refused events .-> F
     Q[query] -->|SQL aggregations| DB
     U[Dashboard / analyst] -->|GET /v1/stats/summary<br/>GET /v1/events/samples| Q
+    E --> A[alerting<br/>Kafka Streams]
+    AR[(alert.rules<br/>compacted)] --> A
+    A <-->|per-minute counts| AS[(window store<br/>alert-counts)]
+    U -->|POST /v1/alerts/define<br/>GET /v1/alerts/evaluate| A
+    A -->|new rules| AR
 ```
 
-One image runs as four containers (Spring profiles), plus Kafka (KRaft, single broker) and ClickHouse.
+One image runs as five containers (Spring profiles), plus Kafka (KRaft, single broker) and ClickHouse.
 
 **Write path:**
 1. `ingest` validates the request and produces each event to `events.raw`, keyed by `clientIp`, with `acks=all`. It answers 201 only after Kafka has stored the events, and 503 if Kafka is down.
@@ -241,6 +288,8 @@ One image runs as four containers (Spring profiles), plus Kafka (KRaft, single b
 3. The `sink` polls up to 1,000 enriched events and writes them with one ClickHouse `INSERT`. It commits the Kafka offsets only after the insert succeeds.
 
 **Read path:** `query` runs the aggregations in ClickHouse and returns JSON. It never touches Kafka.
+
+**Alerting path:** `alerting` is a second Kafka Streams app on `events.enriched`. It counts events per minute per category and config, and answers `evaluate` from its own state stores. That proves the point of the topics: new consumers plug in without touching ingest or the processor.
 
 **Scaling:**
 - Each topic has 6 partitions, so up to 6 processor and 6 sink instances can share the work (`docker compose up --scale sink=3`).
@@ -281,7 +330,7 @@ The workload is analytics over a huge, append-only stream: count, group by and a
 - **Event time, not arrival time:** the window uses each event's own `timestamp`, so loading hours of old events at once doesn't make every IP a repeat offender.
 - **At-least-once, end to end:** offsets are committed only after the work is done. Duplicates are harmless: the window skips known event ids, and ClickHouse merges duplicate rows.
 - **Validate at the edge, trust inside:** ingest rejects bad requests (400, with the event index and field). It also rejects values that would break later stages, like timestamps far in the future or numbers too big for their columns. An event that still fails inside the pipeline is parked on `events.failed` instead of blocking the events behind it.
-- **One image, four roles:** each role loads only its own module (`@Profile`), so the roles scale and fail independently. With no profile, everything runs in one JVM (tests, IDE).
+- **One image, five roles:** each role loads only its own module (`@Profile`), so the roles scale and fail independently. With no profile, everything runs in one JVM (tests, IDE).
 - **Layers behind interfaces:** controllers → services → repositories and publishers. The scoring classes have no Spring or Kafka code in their logic, so the same classes would work in a plain consumer or a REST call.
 - **Tests:**
   - Unit tests with mocks check behavior, including which calls were made and which metrics changed.
@@ -293,7 +342,7 @@ The workload is analytics over a huge, append-only stream: count, group by and a
 - **Hot-IP skew:** one IP flooding fills one partition. Detect hot keys and salt them (split one IP over several partitions, then combine its counts), or route them to a separate topic.
 - **Schema:** Avro with a schema registry on the topics, for smaller messages and safe schema changes.
 - **Exactly-once:** Kafka Streams `exactly_once_v2`, plus de-duplication on insert, would remove the rare duplicate rows that queries can count until ClickHouse merges them.
-- **Query scale:** pre-aggregated tables (materialized views per minute) for the summary and time series, and one `GROUPING SETS` query instead of 5. Keyset paging for samples.
+- **Query scale:** pre-aggregated tables (materialized views per minute) for the summary, and one `GROUPING SETS` query instead of 5. Keyset paging for samples.
 - **Kafka message time:** the processor copies the event's timestamp into the Kafka message time. Using processing time would be cleaner for Kafka's own retention.
 - **Operations:**
   - A Kafka health check in `/actuator/health`.
@@ -326,4 +375,4 @@ It replaced the Redis I first had in mind for the per-IP window, with less to ru
 
 ## Milestones
 
-`v0.1-ingestion` · `v0.2-enrichment` · `v0.3-stats` · `v0.4-samples` · `v0.5-generator` · `v0.6-timeseries` · `v1.0`
+`v0.1-ingestion` · `v0.2-enrichment` · `v0.3-stats` · `v0.4-samples` · `v0.5-generator` · `v0.6-alerting` · `v1.0`
