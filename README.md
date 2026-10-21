@@ -23,7 +23,7 @@ Build and test the app without Docker: Java 25, then `./mvnw test` (unit tests, 
 
 ### Load test data
 
-`tools/EventGenerator.java` is a single-file program with no dependencies beyond the JDK. It makes realistic events and sends them through the real ingest API:
+`tools/EventGenerator.java` is a single-file program with no dependencies beyond the JDK (run it with Java 17 or newer). It makes realistic events and sends them through the real ingest API:
 
 ```bash
 java tools/EventGenerator.java --count 10000 --post http://localhost:8080
@@ -69,7 +69,7 @@ Rows become queryable about a second after the 201.
 ### When something fails
 
 - **Kafka down:** ingest answers 503 with `Retry-After`. Nothing is half-stored that the client doesn't know about.
-- **ClickHouse down:** the sink retries the batch with growing pauses (up to 30 s), forever. Events wait in Kafka, and nothing is lost.
+- **ClickHouse down:** the sink retries the batch with growing pauses, forever: 1 s doubling up to 30 s by default (`wsa.sink.retry-initial`, `wsa.sink.retry-max`). Events wait in Kafka, and nothing is lost.
 - **A bad event** never blocks the events behind it. It's parked on the `events.failed` topic, with the reason in the message headers:
   - The processor parks messages it can't read or enrich, using Kafka Streams' built-in dead-letter handling (`errors.dead.letter.queue.topic.name`).
   - The sink parks events ClickHouse refuses while it's otherwise up. When a batch insert fails, it checks with `SELECT 1`: if ClickHouse is down, it retries the batch; if it's up, it inserts the events one by one and parks the ones that fail. The metric is `wsa_sink_failed_total`.
@@ -418,4 +418,4 @@ It replaced the Redis I first had in mind for the per-IP window, with less to ru
 
 ## Milestones
 
-`v0.1-ingestion` · `v0.2-enrichment` · `v0.3-stats` · `v0.4-samples` · `v0.5-generator` · `v0.6-alerting` · `v1.0`
+`v0.1-ingestion` · `v0.2-enrichment` · `v0.3-stats` · `v0.4-samples` · `v0.5-generator` · `v0.6-alerting` · `v1.0` (the submission) · `v1.1` (explicit bean wiring with the logic in plain Java, and the generator's live mode)
