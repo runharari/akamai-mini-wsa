@@ -4,10 +4,8 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-import org.springframework.stereotype.Component;
 
-/** Registers meters in Spring's MeterRegistry, which /actuator/prometheus exposes. */
-@Component
+/** Registers meters in a Micrometer MeterRegistry (Spring's, which /actuator/prometheus exposes). */
 public class MicrometerMetricsFactory implements MetricsFactory {
 
     private static final String PREFIX = "wsa.";
