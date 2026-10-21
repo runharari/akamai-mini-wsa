@@ -1,12 +1,8 @@
 package com.ranharari.miniwsa.query;
 
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Service;
 
 import java.util.List;
 
-@Service
-@Profile({"query", "default"})
 public class DefaultSamplesService implements SamplesService {
 
     private final SamplesRepository repository;

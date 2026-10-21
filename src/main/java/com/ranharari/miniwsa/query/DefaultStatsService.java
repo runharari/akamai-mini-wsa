@@ -1,10 +1,6 @@
 package com.ranharari.miniwsa.query;
 
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Service;
 
-@Service
-@Profile({"query", "default"})
 public class DefaultStatsService implements StatsService {
 
     private final StatsRepository repository;

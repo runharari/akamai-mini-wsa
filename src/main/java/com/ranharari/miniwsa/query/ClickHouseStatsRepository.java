@@ -4,10 +4,8 @@ import com.ranharari.miniwsa.common.exception.StorageException;
 import com.ranharari.miniwsa.query.StatsSummary.AttackerStats;
 import com.ranharari.miniwsa.query.StatsSummary.CategoryStats;
 import com.ranharari.miniwsa.query.StatsSummary.PathStats;
-import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,8 +16,6 @@ import java.util.function.Supplier;
  * All aggregation happens in ClickHouse. No FINAL: a batch re-delivered by the sink may be counted
  * twice until ClickHouse merges the duplicates in the background; FINAL would make every query slower.
  */
-@Repository
-@Profile({"query", "default"})
 public class ClickHouseStatsRepository implements StatsRepository {
 
     private static final int TOP_N = 10;

@@ -2,16 +2,12 @@ package com.ranharari.miniwsa.query;
 
 import com.ranharari.miniwsa.common.exception.InvalidRequestException;
 import com.ranharari.miniwsa.common.exception.Violation;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
-@Component
-@Profile({"query", "default"})
 public class DefaultTimeRangeResolver implements TimeRangeResolver {
 
     private static final Duration DEFAULT_WINDOW = Duration.ofHours(24);

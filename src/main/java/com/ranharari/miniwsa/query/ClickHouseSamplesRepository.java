@@ -6,10 +6,8 @@ import com.ranharari.miniwsa.common.model.Category;
 import com.ranharari.miniwsa.common.model.GeoLocation;
 import com.ranharari.miniwsa.common.model.Rule;
 import com.ranharari.miniwsa.common.model.Severity;
-import org.springframework.context.annotation.Profile;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -21,8 +19,6 @@ import java.util.function.Supplier;
  * Reads single events. No FINAL: a batch re-delivered by the sink may show an event twice until
  * ClickHouse merges the duplicates in the background; FINAL would make every query slower.
  */
-@Repository
-@Profile({"query", "default"})
 public class ClickHouseSamplesRepository implements SamplesRepository {
 
     /** Times are selected as epoch milliseconds, so no JVM or server time zone can shift them. */
