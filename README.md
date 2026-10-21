@@ -179,7 +179,7 @@ curl -s localhost:8082/v1/alerts/evaluate
 - `category`, `threshold` (0 or more) and `windowMinutes` (1 to 1440) are required. `name` and `configId` are optional; no `configId` means all configs. A bad value gets a 400.
 - A rule fires when **count > threshold**. The count covers the events whose own timestamp falls in the last `windowMinutes`, ending now.
 
-**How it works:** the `alerting` role is its own Kafka Streams app, reading `events.enriched`. No database is involved.
+**How it works:** the `alerting` role is its own Kafka Streams app, reading `events.enriched`. No external database: its state lives in embedded RocksDB stores on its own disk, backed up to Kafka changelog topics.
 - **Rules** are written to the compacted topic `alert.rules`, which acts as the rules' database: Kafka keeps the latest version of every rule. The app reads that topic into a `GlobalKTable`, so every instance has all rules.
 - **Counts:**
   - Each event is counted per minute under its config and category (`14227|INJECTION`), and again for all configs (`*|INJECTION`).
@@ -264,22 +264,37 @@ curl -s localhost:8080/actuator/prometheus | grep '^wsa_'
 ```mermaid
 flowchart LR
     C[Client / generator] -->|POST /v1/events/ingest| I[ingest]
-    I -->|key = clientIp| R[(events.raw)]
-    R --> P[processor<br/>Kafka Streams]
-    P <-->|per-IP window| S[(state store ip-window<br/>RocksDB + changelog)]
-    P --> E[(events.enriched)]
-    P -. bad events .-> F[(events.failed)]
+    subgraph KAFKA[Kafka topics]
+        R[(events.raw)]
+        E[(events.enriched)]
+        F[(events.failed)]
+        AR[(alert.rules<br/>compacted)]
+    end
+    I -->|key = clientIp| R
+    subgraph PC[processor container]
+        P[processor<br/>Kafka Streams] <-->|per-IP window| S[(RocksDB<br/>ip-window)]
+    end
+    R --> P
+    P --> E
+    P -. bad events .-> F
     E --> K[sink<br/>batch consumer]
-    K -->|one INSERT per batch| DB[(ClickHouse<br/>events)]
+    K -->|one INSERT per batch| DB[(ClickHouse<br/>events table)]
     K -. refused events .-> F
     Q[query] -->|SQL aggregations| DB
-    U[Dashboard / analyst] -->|GET /v1/stats/summary<br/>GET /v1/events/samples| Q
-    E --> A[alerting<br/>Kafka Streams]
-    AR[(alert.rules<br/>compacted)] --> A
-    A <-->|per-minute counts| AS[(window store<br/>alert-counts)]
-    U -->|POST /v1/alerts/define<br/>GET /v1/alerts/evaluate| A
+    U[Dashboard / analyst] -->|GET stats, samples| Q
+    subgraph AC[alerting container]
+        A[alerting<br/>Kafka Streams] <-->|per-minute counts, rules| AS[(RocksDB<br/>alert-counts, alert-rules)]
+    end
+    E --> A
+    AR --> A
     A -->|new rules| AR
+    U -->|define, evaluate| A
 ```
+
+**Where data lives:**
+- **Kafka:** the topics, which act as durable buffers between the roles.
+- **ClickHouse:** the events, for the query APIs.
+- **RocksDB:** an embedded key-value store on each Kafka Streams container's local disk, holding its state. Every RocksDB store is backed up to a Kafka changelog topic (not drawn), so a lost container rebuilds it from Kafka.
 
 One image runs as five containers (Spring profiles), plus Kafka (KRaft, single broker) and ClickHouse.
 

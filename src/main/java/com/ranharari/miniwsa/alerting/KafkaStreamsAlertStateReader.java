@@ -18,7 +18,8 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * Asks the Kafka Streams state stores directly ("interactive queries"): no database involved.
+ * Asks the Kafka Streams state stores directly ("interactive queries"): the app's own embedded
+ * RocksDB stores, no external database.
  * Assumes one alerting instance. With several, each would hold only some count keys, and a request
  * would have to be forwarded to the instance that owns the key (KafkaStreams#queryMetadataForKey).
  */
