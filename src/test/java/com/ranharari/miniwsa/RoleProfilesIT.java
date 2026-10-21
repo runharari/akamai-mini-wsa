@@ -1,5 +1,7 @@
 package com.ranharari.miniwsa;
 
+import com.ranharari.miniwsa.alerting.AlertController;
+import com.ranharari.miniwsa.alerting.AlertingTopology;
 import com.ranharari.miniwsa.ingest.IngestController;
 import com.ranharari.miniwsa.processor.EnrichmentTopology;
 import com.ranharari.miniwsa.query.SamplesController;
@@ -44,6 +46,7 @@ class RoleProfilesIT {
             assertThat(context.getBeanNamesForType(EnrichmentTopology.class)).isEmpty();
             assertThat(context.getBeanNamesForType(EnrichedEventListener.class)).isEmpty();
             assertThat(context.getBeanNamesForType(StatsController.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(AlertController.class)).isEmpty();
             assertThat(context.getBeanNamesForType(SamplesController.class)).isEmpty();
         }
     }
@@ -61,6 +64,7 @@ class RoleProfilesIT {
             assertThat(context.getBeanNamesForType(IngestController.class)).isEmpty();
             assertThat(context.getBeanNamesForType(EnrichedEventListener.class)).isEmpty();
             assertThat(context.getBeanNamesForType(StatsController.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(AlertController.class)).isEmpty();
             assertThat(context.getBeanNamesForType(SamplesController.class)).isEmpty();
         }
     }
@@ -78,6 +82,7 @@ class RoleProfilesIT {
             assertThat(context.getBeanNamesForType(IngestController.class)).isEmpty();
             assertThat(context.getBeanNamesForType(EnrichmentTopology.class)).isEmpty();
             assertThat(context.getBeanNamesForType(StatsController.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(AlertController.class)).isEmpty();
             assertThat(context.getBeanNamesForType(SamplesController.class)).isEmpty();
         }
     }
@@ -96,6 +101,25 @@ class RoleProfilesIT {
             assertThat(context.getBeanNamesForType(IngestController.class)).isEmpty();
             assertThat(context.getBeanNamesForType(EnrichmentTopology.class)).isEmpty();
             assertThat(context.getBeanNamesForType(EnrichedEventListener.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(AlertController.class)).isEmpty();
+        }
+    }
+
+    @Nested
+    @SpringBootTest
+    @ActiveProfiles("alerting")
+    class Alerting {
+        @Autowired
+        ApplicationContext context;
+
+        @Test
+        void loadsOnlyAlerting() {
+            assertThat(context.getBeanNamesForType(AlertController.class)).hasSize(1);
+            assertThat(context.getBeanNamesForType(AlertingTopology.class)).hasSize(1);
+            assertThat(context.getBeanNamesForType(EnrichmentTopology.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(IngestController.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(EnrichedEventListener.class)).isEmpty();
+            assertThat(context.getBeanNamesForType(StatsController.class)).isEmpty();
         }
     }
 
@@ -112,6 +136,7 @@ class RoleProfilesIT {
             assertThat(context.getBeanNamesForType(EnrichedEventListener.class)).hasSize(1);
             assertThat(context.getBeanNamesForType(StatsController.class)).hasSize(1);
             assertThat(context.getBeanNamesForType(SamplesController.class)).hasSize(1);
+            assertThat(context.getBeanNamesForType(AlertController.class)).hasSize(1);
         }
     }
 }

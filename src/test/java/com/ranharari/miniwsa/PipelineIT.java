@@ -99,6 +99,34 @@ class PipelineIT {
     }
 
     @Test
+    void alertRuleFiresWhenAnAttackWaveCrossesItsThreshold() {
+        // "More than 5 INJECTION events of this config within 2 hours."
+        String ruleId = http.post().uri("/v1/alerts/define").contentType(MediaType.APPLICATION_JSON)
+                .body("""
+                        {"name":"SQLi burst","category":"INJECTION","configId":%d,"threshold":5,"windowMinutes":120}
+                        """.formatted(configId))
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody(String.class).returnResult().getResponseBody()
+                .replaceAll(".*\"id\":\"([^\"]+)\".*", "$1");
+
+        List<String> wave = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            wave.add(event("alert-" + i, start.plus(Duration.ofMinutes(i)), ATTACKER, "/login", "HIGH", "INJECTION", "DENY"));
+        }
+        http.post().uri("/v1/events/ingest").contentType(MediaType.APPLICATION_JSON)
+                .body("[" + String.join(",", wave) + "]")
+                .exchange()
+                .expectStatus().isCreated();
+
+        await().atMost(Duration.ofSeconds(90)).pollInterval(Duration.ofSeconds(1)).untilAsserted(() ->
+                http.get().uri("/v1/alerts/evaluate").exchange()
+                        .expectStatus().isOk()
+                        .expectBody()
+                        .jsonPath("$.firing[?(@.ruleId == '%s')].count".formatted(ruleId)).isEqualTo(List.of(6)));
+    }
+
+    @Test
     void invalidEventIsRejectedWithTheFieldThatIsWrong() {
         String bad = event("bad", start, ATTACKER, "/", "LOW", "BOT", "BLOCK");
 
