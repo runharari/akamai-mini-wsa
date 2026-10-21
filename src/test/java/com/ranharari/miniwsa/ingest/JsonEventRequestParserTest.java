@@ -1,6 +1,5 @@
 package com.ranharari.miniwsa.ingest;
 
-import com.ranharari.miniwsa.ingest.config.IngestProperties;
 import com.ranharari.miniwsa.common.exception.Violation;
 import com.ranharari.miniwsa.common.exception.InvalidRequestException;
 import com.ranharari.miniwsa.common.model.Action;
@@ -37,7 +36,7 @@ class JsonEventRequestParserTest {
     private static final Instant NOW = Instant.parse("2026-05-20T15:00:00Z");
 
     private final JsonEventRequestParser parser = new JsonEventRequestParser(jsonMapper, validator,
-            new IngestProperties(3, Duration.ofSeconds(1), Duration.ofDays(365), Duration.ofMinutes(5)),
+            new RequestLimits(3, Duration.ofDays(365), Duration.ofMinutes(5)),
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     @AfterAll

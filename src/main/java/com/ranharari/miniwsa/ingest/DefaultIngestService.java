@@ -8,8 +8,6 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Clock;
@@ -17,8 +15,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
-@Service
-@Profile({"ingest", "default"})
 public class DefaultIngestService implements IngestService {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultIngestService.class);

@@ -1,13 +1,10 @@
 package com.ranharari.miniwsa.ingest;
 
-import com.ranharari.miniwsa.ingest.config.IngestProperties;
 import com.ranharari.miniwsa.common.exception.Violation;
 import com.ranharari.miniwsa.common.exception.InvalidRequestException;
 import com.ranharari.miniwsa.common.model.SecurityEvent;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
-import org.springframework.context.annotation.Profile;
-import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.exc.InvalidFormatException;
@@ -27,19 +24,17 @@ import java.util.stream.Collectors;
  * finds a missing field or a number out of range, or the timestamp is outside the accepted range.
  * All errors of all events are collected before rejecting the request.
  */
-@Component
-@Profile({"ingest", "default"})
 public class JsonEventRequestParser implements EventRequestParser {
 
     private final JsonMapper jsonMapper;
     private final Validator validator;
-    private final IngestProperties properties;
+    private final RequestLimits limits;
     private final Clock clock;
 
-    public JsonEventRequestParser(JsonMapper jsonMapper, Validator validator, IngestProperties properties, Clock clock) {
+    public JsonEventRequestParser(JsonMapper jsonMapper, Validator validator, RequestLimits limits, Clock clock) {
         this.jsonMapper = jsonMapper;
         this.validator = validator;
-        this.properties = properties;
+        this.limits = limits;
         this.clock = clock;
     }
 
@@ -80,9 +75,9 @@ public class JsonEventRequestParser implements EventRequestParser {
         if (nodes.isEmpty()) {
             throw new InvalidRequestException(Violation.ofParam(null, "batch must contain at least one event"));
         }
-        if (nodes.size() > properties.maxBatchSize()) {
+        if (nodes.size() > limits.maxBatchSize()) {
             throw new InvalidRequestException(Violation.ofParam(null,
-                    "batch has " + nodes.size() + " events, the maximum is " + properties.maxBatchSize()));
+                    "batch has " + nodes.size() + " events, the maximum is " + limits.maxBatchSize()));
         }
         return nodes;
     }
@@ -123,8 +118,8 @@ public class JsonEventRequestParser implements EventRequestParser {
      * dated more than an hour ahead, and Kafka Streams drops events before 1970.
      */
     private List<Violation> checkTimestampRange(int index, SecurityEvent event, Instant now) {
-        Instant earliest = now.minus(properties.maxEventAge());
-        Instant latest = now.plus(properties.maxClockSkew());
+        Instant earliest = now.minus(limits.maxEventAge());
+        Instant latest = now.plus(limits.maxClockSkew());
         if (event.timestamp().isBefore(earliest) || event.timestamp().isAfter(latest)) {
             return List.of(Violation.ofEvent(index, "timestamp", "must be between " + earliest + " and " + latest));
         }
