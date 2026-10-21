@@ -355,6 +355,11 @@ The workload is analytics over a huge, append-only stream: count, group by and a
   - The API only validates and hands off, so a slow database never slows ingest.
   - Kafka is a durable buffer, and 503 is real backpressure.
   - New consumers (alerting, archiving) can read the same topics later.
+- **Kafka, not ClickHouse async inserts:**
+  - Async inserts would be simpler, with no Kafka: ClickHouse buffers small inserts and flushes them in batches.
+  - But the buffer lives in ClickHouse's memory, so a crash loses it.
+  - It also gives no backpressure, no replay, no other consumers, and less control over batch size.
+  - Kafka costs a broker to run, and buys durability, replay and decoupling.
 - **Repeat offender in a Kafka Streams state store, keyed by IP:**
   - All events of one IP are on one partition, so one task owns that IP. That means no locks and no Redis.
   - The store survives restarts through its changelog topic.
@@ -363,7 +368,15 @@ The workload is analytics over a huge, append-only stream: count, group by and a
 - **Event time, not arrival time:** the window uses each event's own `timestamp`, so loading hours of old events at once doesn't make every IP a repeat offender.
 - **At-least-once, end to end:** offsets are committed only after the work is done. Duplicates are harmless: the window skips known event ids, and ClickHouse merges duplicate rows.
 - **Validate at the edge, trust inside:** ingest rejects bad requests (400, with the event index and field). It also rejects values that would break later stages, like timestamps far in the future or numbers too big for their columns. An event that still fails inside the pipeline is parked on `events.failed` instead of blocking the events behind it.
-- **One image, five roles:** each role loads only its own module (`@Profile`), so the roles scale and fail independently. With no profile, everything runs in one JVM (tests, IDE).
+- **One image, five roles (not five services yet):**
+  - Each role loads only its own module (`@Profile`), so the roles scale and fail independently. With no profile, everything runs in one JVM (tests, IDE).
+  - One codebase keeps building, testing and versioning simple at this size.
+  - **Separate services later:** as the roles grow apart, I'd split them into their own modules and images, with independent releases and smaller dependency sets (the query role wouldn't carry Kafka Streams), so different teams can own them.
+  - The packages are already shaped for that: modules depend only on `common`.
+- **Alerting as a stream, not SQL on demand:**
+  - A SQL count per rule on the query role would be simpler, and it fits the brief's pull-only API.
+  - But it re-scans ClickHouse on every call for every rule.
+  - Counting in Kafka Streams handles each event once, keeps `evaluate` cheap, and leads naturally to push alerts.
 - **Layers behind interfaces:** controllers → services → repositories and publishers.
 - **Explicit wiring, plain classes:**
   - No classpath scanning: `MiniWsaApplication` lists the module configs with `@Import`, one per module in its `config` package. Each config creates every bean of its module with `new`, so reading it shows the whole wiring.
@@ -388,28 +401,30 @@ Most important first.
 2. **High availability and retention.**
    - **Kafka:** replication factor 3 with `min.insync.replicas=2`.
    - **ClickHouse:** a replicated table, sharded by `configId` behind a distributed table.
-   - **Retention:** `TTL` on the table and on the topics.
-3. **Query performance at scale.**
+   - **Retention:** `TTL` on the hot data, with old days moved to Parquet on S3 as a cheap cold tier (still queryable with Trino or Athena, or ClickHouse itself).
+3. **Alerts on the system itself.**
+   - The metrics exist; next come Prometheus alert rules (lag growing, 503 rate, events parked on `events.failed`, insert failures) and a Grafana dashboard per role.
+4. **Query performance at scale.**
    - Pre-aggregated per-minute tables (materialized views) for the summary.
    - One `GROUPING SETS` query instead of 5.
    - Keyset paging for samples instead of offsets.
-4. **Hot-IP skew.** A single flooding IP lands on a single partition. Detect hot keys and salt them (spread one IP over several partitions, then combine its counts), or route them to a separate topic.
-5. **Exactly-once.** Kafka Streams `exactly_once_v2`, plus de-duplication on insert, would remove the rare duplicate rows that queries can count until ClickHouse merges them.
-6. **Bigger inserts at low traffic.** One sink consumer with a longer fetch wait gives fewer, larger inserts, at the cost of about a second of extra latency. An alternative is ClickHouse's own Kafka engine or Kafka Connect instead of our consumer: fewer moving parts, but less control over retries and parking bad events.
-7. **Security.**
+5. **Hot-IP skew.** A single flooding IP lands on a single partition. Detect hot keys and salt them (spread one IP over several partitions, then combine its counts), or route them to a separate topic.
+6. **Scoring rules per customer.** Today the weights are code: reviewed and unit-tested, which fits a fixed spec. A real product lets each customer tune them, so they'd live in a rules store (a database, or a compacted topic like `alert.rules`) and change without a deploy.
+7. **Exactly-once.** Kafka Streams `exactly_once_v2`, plus de-duplication on insert, would remove the rare duplicate rows that queries can count until ClickHouse merges them.
+8. **Bigger inserts at low traffic.** One sink consumer with a longer fetch wait gives fewer, larger inserts, at the cost of about a second of extra latency. An alternative is ClickHouse's own Kafka engine or Kafka Connect instead of our consumer: fewer moving parts, but less control over retries and parking bad events.
+9. **Security.**
    - Authentication on the APIs, with each client limited to its own `configId`s.
    - Rate limiting.
    - TLS and SASL to Kafka and ClickHouse.
-8. **Schemas.** Avro with a schema registry on the topics, for smaller messages and safe schema changes between roles.
-9. **Alerting beyond one instance.**
-   - Route evaluate calls to the instance that owns each count key.
-   - Push "started / stopped firing" to an `alerts` topic for notifications and history.
-10. **Operations polish:**
+10. **Schemas.** Avro with a schema registry on the topics, for smaller messages and safe schema changes between roles.
+11. **Alerting beyond one instance.**
+    - Route evaluate calls to the instance that owns each count key.
+    - Push "started / stopped firing" to an `alerts` topic for notifications and history.
+12. **Operations polish:**
     - A Kafka health check in `/actuator/health`.
     - Static group membership, so a redeployed processor doesn't wait about 40 s to rebalance.
     - A replay tool for `events.failed`.
     - Processing time as the Kafka message time.
-    - Separate Maven modules and images per role once the roles grow apart.
 
 ## What was challenging
 
