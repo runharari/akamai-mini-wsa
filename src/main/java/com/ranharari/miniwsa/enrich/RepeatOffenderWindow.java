@@ -13,7 +13,7 @@ public interface RepeatOffenderWindow {
 
     Result check(History history, SecurityEvent event);
 
-    /** What we remember about one IP: its most recent events (bounded). */
+    /** What we remember about one IP: its most recent events (bounded), newest first. */
     record History(List<Entry> entries) {
 
         public static History empty() {

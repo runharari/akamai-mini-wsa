@@ -4,6 +4,7 @@ import com.ranharari.miniwsa.common.model.EnrichedEvent;
 import com.ranharari.miniwsa.common.model.SecurityEvent;
 import com.ranharari.miniwsa.enrich.Enricher;
 import com.ranharari.miniwsa.enrich.RepeatOffenderWindow;
+import com.ranharari.miniwsa.enrich.RepeatOffenderWindow.Entry;
 import com.ranharari.miniwsa.enrich.RepeatOffenderWindow.History;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
@@ -78,8 +79,9 @@ class EnrichProcessor implements FixedKeyProcessor<String, SecurityEvent, Enrich
         try (KeyValueIterator<String, History> all = store.all()) {
             while (all.hasNext()) {
                 KeyValue<String, History> ip = all.next();
-                boolean newestIsOld = ip.value.entries().stream().allMatch(entry -> entry.timestamp().isBefore(cutoff));
-                if (newestIsOld) {
+                List<Entry> entries = ip.value.entries();
+                // Newest first, so the first entry is when the IP was last seen.
+                if (entries.isEmpty() || entries.getFirst().timestamp().isBefore(cutoff)) {
                     idle.add(ip.key);
                 }
             }
