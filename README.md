@@ -264,37 +264,35 @@ curl -s localhost:8080/actuator/prometheus | grep '^wsa_'
 ```mermaid
 flowchart LR
     C[Client / generator] -->|POST /v1/events/ingest| I[ingest]
-    subgraph KAFKA[Kafka topics]
-        R[(events.raw)]
-        E[(events.enriched)]
-        F[(events.failed)]
-        AR[(alert.rules<br/>compacted)]
+    I -->|key = clientIp| R[(Kafka<br/>events.raw)]
+    R --> PB
+    subgraph PB[processor]
+        direction TB
+        P[Kafka Streams:<br/>classify + score] <-->|per-IP window| S[(RocksDB<br/>ip-window)]
     end
-    I -->|key = clientIp| R
-    subgraph PC[processor container]
-        P[processor<br/>Kafka Streams] <-->|per-IP window| S[(RocksDB<br/>ip-window)]
+    PB --> E[(Kafka<br/>events.enriched)]
+    E --> SB
+    subgraph SB[sink]
+        direction TB
+        K[batch consumer] -->|one INSERT per batch| DB[(ClickHouse<br/>events)]
     end
-    R --> P
-    P --> E
-    P -. bad events .-> F
-    E --> K[sink<br/>batch consumer]
-    K -->|one INSERT per batch| DB[(ClickHouse<br/>events table)]
-    K -. refused events .-> F
-    Q[query] -->|SQL aggregations| DB
-    U[Dashboard / analyst] -->|GET stats, samples| Q
-    subgraph AC[alerting container]
-        A[alerting<br/>Kafka Streams] <-->|per-minute counts, rules| AS[(RocksDB<br/>alert-counts, alert-rules)]
+    SB -->|SQL| Q[query]
+    Q -->|stats, samples| U[Dashboard / analyst]
+    E --> AB
+    subgraph AB[alerting]
+        direction TB
+        A[Kafka Streams:<br/>count per minute] <--> AS[(RocksDB<br/>alert-counts)]
+        A <--> AR[(Kafka<br/>alert.rules)]
     end
-    E --> A
-    AR --> A
-    A -->|new rules| AR
-    U -->|define, evaluate| A
+    AB -->|define rules, evaluate| U
 ```
 
 **Where data lives:**
 - **Kafka:** the topics, which act as durable buffers between the roles.
 - **ClickHouse:** the events, for the query APIs.
 - **RocksDB:** an embedded key-value store on each Kafka Streams container's local disk, holding its state. Every RocksDB store is backed up to a Kafka changelog topic (not drawn), so a lost container rebuilds it from Kafka.
+
+Not drawn either: events the processor or sink can't handle go to the `events.failed` topic (see "When something fails").
 
 One image runs as five containers (Spring profiles), plus Kafka (KRaft, single broker) and ClickHouse.
 
