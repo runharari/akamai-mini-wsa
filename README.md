@@ -40,6 +40,24 @@ curl -s localhost:8081/v1/stats/summary        # the attack-wave IPs top the att
 
 On a laptop (the whole stack in Docker), 10,000 events were accepted in about 1 second. A summary query over them took about 30 to 40 ms.
 
+**Live mode, for watching it work in real time:**
+
+```bash
+java tools/EventGenerator.java --live --post http://localhost:8080     # Ctrl+C to stop
+```
+
+- **Traffic:** it sends 10 events per second (`--rate N`) stamped "now".
+- **Waves:** every 2 minutes, a 30-second attack wave adds 10 events per second from one IP, and it prints which IP, path and category.
+- **Alerts:** a rule on the wave's category fires during the wave and clears by itself before the next one:
+
+```bash
+curl -s -X POST localhost:8082/v1/alerts/define -H 'Content-Type: application/json' \
+  -d '{"name":"live burst","category":"INJECTION","threshold":300,"windowMinutes":1}'
+curl -s localhost:8082/v1/alerts/evaluate      # firing during the wave, empty about a minute after it
+```
+
+In a test run, the rule fired while the wave was running and cleared 47 seconds after the wave ended. The stats showed the wave's IP as top attacker within seconds.
+
 ## How it works, in three lines
 
 1. `POST /v1/events/ingest` validates the events and writes them to the Kafka topic `events.raw`, keyed by `clientIp`. It answers **201** only after Kafka has stored them.

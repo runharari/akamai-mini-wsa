@@ -5,9 +5,11 @@
  *   java tools/EventGenerator.java --count 10000 --post http://localhost:8080
  *   java tools/EventGenerator.java --count 2000 --seed 42 --out events.json
  *   curl -H 'Content-Type: application/json' --data @events.json http://localhost:8080/v1/events/ingest
+ *   java tools/EventGenerator.java --live --post http://localhost:8080      (real time, Ctrl+C to stop)
  *
  * Options: --count N (10000)  --post BASE_URL  --out FILE  --batch N (500, max 5000)  --seed N
- * At least one of --post / --out is required.
+ *          --live  --rate N (10 events/s in live mode)
+ * At least one of --post / --out is required; --live needs --post.
  */
 
 import java.io.IOException;
@@ -24,18 +26,26 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class EventGenerator {
 
     // ---------- configuration ----------
 
-    record Options(int count, String postUrl, String outFile, int batch, long seed) {}
+    record Options(int count, String postUrl, String outFile, int batch, long seed, boolean live, int rate) {}
 
     static final int MAX_BATCH = 5000;
     static final double WAVE_SHARE = 0.30;       // ~30% of all events belong to attack waves
     static final int WINDOW_HOURS = 6;           // timestamps spread over the last 6 hours
     static final int NORMAL_IP_COUNT = 200;
     static final int ATTACKER_IP_COUNT = 20;
+
+    // Live mode: a wave every 2 minutes, lasting 30 seconds, so an alert on a 1-minute window
+    // fires during a wave and clears before the next one.
+    static final int LIVE_FIRST_WAVE_AFTER_SECONDS = 15;
+    static final int LIVE_WAVE_EVERY_SECONDS = 120;
+    static final int LIVE_WAVE_SECONDS = 30;
+    static final int LIVE_WAVE_EVENTS_PER_SECOND = 10;
 
     // ---------- domain data ----------
 
@@ -131,6 +141,10 @@ public class EventGenerator {
             System.exit(2);
         }
         EventGenerator generator = new EventGenerator(options);
+        if (options.live()) {
+            generator.runLive();
+            return;
+        }
         List<Event> events = generator.generateAll();
         List<String> json = events.stream().map(EventGenerator::toJson).toList();
 
@@ -154,6 +168,9 @@ public class EventGenerator {
               --out FILE   write all events as one JSON array to FILE
               --batch N    events per POST (default 500, max 5000)
               --seed N     random seed for a reproducible run (default: random)
+              --live       send events stamped "now" in real time, with an attack wave every 2 minutes,
+                           until Ctrl+C (needs --post; --count and --out are ignored)
+              --rate N     normal events per second in live mode (default 10)
             At least one of --post / --out is required.""";
 
     static Options parseArgs(String[] args) {
@@ -162,6 +179,8 @@ public class EventGenerator {
         String outFile = null;
         int batch = 500;
         long seed = new Random().nextLong();
+        boolean live = false;
+        int rate = 10;
         try {
             for (int i = 0; i < args.length; i++) {
                 switch (args[i]) {
@@ -171,12 +190,16 @@ public class EventGenerator {
                     case "--out" -> outFile = args[++i];
                     case "--batch" -> batch = Integer.parseInt(args[++i]);
                     case "--seed" -> seed = Long.parseLong(args[++i]);
+                    case "--live" -> live = true;
+                    case "--rate" -> rate = Integer.parseInt(args[++i]);
                     default -> throw new IllegalArgumentException("Unknown option: " + args[i]);
                 }
             }
             if (count < 1) throw new IllegalArgumentException("--count must be at least 1");
             if (batch < 1 || batch > MAX_BATCH) throw new IllegalArgumentException("--batch must be 1.." + MAX_BATCH);
+            if (live && postUrl == null) throw new IllegalArgumentException("--live needs --post");
             if (postUrl == null && outFile == null) throw new IllegalArgumentException("Give --post and/or --out");
+            if (rate < 1 || rate > MAX_BATCH) throw new IllegalArgumentException("--rate must be 1.." + MAX_BATCH);
         } catch (ArrayIndexOutOfBoundsException e) {
             System.err.println("Missing value for the last option\n" + USAGE);
             return null;
@@ -184,7 +207,7 @@ public class EventGenerator {
             System.err.println("Error: " + e.getMessage() + "\n" + USAGE);
             return null;
         }
-        return new Options(count, postUrl, outFile, batch, seed);
+        return new Options(count, postUrl, outFile, batch, seed, live, rate);
     }
 
     // ---------- event generation ----------
@@ -226,7 +249,10 @@ public class EventGenerator {
     }
 
     Event normalEvent() {
-        Instant time = now.minusSeconds(10 + (long) (random.nextDouble() * (WINDOW_HOURS * 3600L - 10)));
+        return normalEvent(now.minusSeconds(10 + (long) (random.nextDouble() * (WINDOW_HOURS * 3600L - 10))));
+    }
+
+    Event normalEvent(Instant time) {
         Site site = SITES.get(random.nextInt(SITES.size()));
         Client client = normalClients.get(random.nextInt(normalClients.size()));
         String path = NORMAL_PATHS[random.nextInt(NORMAL_PATHS.length)].replace("{id}", String.valueOf(1 + random.nextInt(5000)));
@@ -261,6 +287,69 @@ public class EventGenerator {
         if (roll < 75) return pick(BROWSER_AGENTS);
         if (roll < 90) return pick(TOOL_AGENTS);
         return pick(BOT_AGENTS);
+    }
+
+    // ---------- live mode ----------
+
+    /** The wave in progress: one attacker hitting one path with one kind of attack. */
+    record LiveWave(Client attacker, Site site, String path, String method, String category, Instant endsAt) {}
+
+    /**
+     * Pretends to be the edge sending traffic right now: every second, {@code --rate} normal events
+     * stamped with the current time, plus the events of the current attack wave. Runs until Ctrl+C.
+     */
+    void runLive() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        URI uri = ingestUri(options.postUrl());
+        AtomicLong sent = new AtomicLong();
+        long startNanos = System.nanoTime();
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> System.out.printf("%nStopped. Sent %d events in %ds%n",
+                sent.get(), (System.nanoTime() - startNanos) / 1_000_000_000L)));
+        System.out.printf("Live: %d events/s, a %ds attack wave every %ds (first in %ds). Ctrl+C to stop.%n",
+                options.rate(), LIVE_WAVE_SECONDS, LIVE_WAVE_EVERY_SECONDS, LIVE_FIRST_WAVE_AFTER_SECONDS);
+
+        LiveWave wave = null;
+        Instant nextWave = Instant.now().plusSeconds(LIVE_FIRST_WAVE_AFTER_SECONDS);
+        for (long second = 1; ; second++) {
+            long tickStart = System.currentTimeMillis();
+            Instant now = Instant.now();
+            if (wave != null && now.isAfter(wave.endsAt())) {
+                System.out.println("Wave over");
+                wave = null;
+            }
+            if (wave == null && !now.isBefore(nextWave)) {
+                wave = startLiveWave(now);
+                nextWave = now.plusSeconds(LIVE_WAVE_EVERY_SECONDS);
+                System.out.printf("Wave started: %s -> %s (%s), %d events/s for %ds%n", wave.attacker().ip(),
+                        wave.path(), wave.category(), LIVE_WAVE_EVENTS_PER_SECOND, LIVE_WAVE_SECONDS);
+            }
+
+            List<Event> events = new ArrayList<>();
+            for (int i = 0; i < options.rate(); i++) {
+                events.add(normalEvent(now));
+            }
+            if (wave != null) {
+                for (int i = 0; i < LIVE_WAVE_EVENTS_PER_SECOND; i++) {
+                    events.add(buildEvent(now, wave.site(), wave.attacker(), wave.path(), wave.method(),
+                            wave.category(), WAVE_ACTION_WEIGHTS, true));
+                }
+            }
+            if (!sendBatch(client, uri, events.stream().map(EventGenerator::toJson).toList())) {
+                System.exit(1);
+            }
+            sent.addAndGet(events.size());
+            if (second % 10 == 0) {
+                System.out.println("Sent " + sent.get() + " events" + (wave != null ? ", wave in progress" : ""));
+            }
+            Thread.sleep(Math.max(0, 1000 - (System.currentTimeMillis() - tickStart)));
+        }
+    }
+
+    LiveWave startLiveWave(Instant now) {
+        String path = WAVE_PATHS[random.nextInt(WAVE_PATHS.length)];
+        return new LiveWave(attackers.get(random.nextInt(attackers.size())), SITES.get(random.nextInt(SITES.size())),
+                path, path.equals("/admin") ? "GET" : "POST", WAVE_CATEGORIES[random.nextInt(WAVE_CATEGORIES.length)],
+                now.plusSeconds(LIVE_WAVE_SECONDS));
     }
 
     // ---------- client pools ----------
@@ -379,7 +468,7 @@ public class EventGenerator {
 
     static boolean post(Options options, List<String> json) throws Exception {
         HttpClient client = HttpClient.newHttpClient();
-        URI uri = URI.create(options.postUrl().replaceAll("/+$", "") + "/v1/events/ingest");
+        URI uri = ingestUri(options.postUrl());
         long start = System.nanoTime();
         int sent = 0;
         int nextReport = 2000;
@@ -397,6 +486,10 @@ public class EventGenerator {
         double seconds = (System.nanoTime() - start) / 1e9;
         System.out.printf("Sent %d events in %.1fs (%.0f events/s)%n", sent, seconds, sent / seconds);
         return true;
+    }
+
+    static URI ingestUri(String baseUrl) {
+        return URI.create(baseUrl.replaceAll("/+$", "") + "/v1/events/ingest");
     }
 
     // Returns false if the server rejected the batch (400) or stayed unavailable.
