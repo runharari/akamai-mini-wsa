@@ -377,18 +377,39 @@ The workload is analytics over a huge, append-only stream: count, group by and a
 
 ## What I'd improve with more time
 
-- **Hot-IP skew:** one IP flooding fills one partition. Detect hot keys and salt them (split one IP over several partitions, then combine its counts), or route them to a separate topic.
-- **Schema:** Avro with a schema registry on the topics, for smaller messages and safe schema changes.
-- **Exactly-once:** Kafka Streams `exactly_once_v2`, plus de-duplication on insert, would remove the rare duplicate rows that queries can count until ClickHouse merges them.
-- **Query scale:** pre-aggregated tables (materialized views per minute) for the summary, and one `GROUPING SETS` query instead of 5. Keyset paging for samples.
-- **Kafka message time:** the processor copies the event's timestamp into the Kafka message time. Using processing time would be cleaner for Kafka's own retention.
-- **Operations:**
-  - A Kafka health check in `/actuator/health`.
-  - Static group membership, so a redeployed processor doesn't wait about 40 s to rebalance.
-  - A replay tool for `events.failed`.
-  - ClickHouse `TTL` for retention.
-  - Replication factor 3.
-- **Errors and security:** a 503 instead of 500 when ClickHouse is down on the query API. Authentication and rate limiting on the APIs.
+Most important first.
+
+1. **Autoscaling on the right metric for each role.**
+   - **processor, sink, alerting:** scale on **consumer lag**, for example with KEDA's Kafka scaler.
+   - **ingest:** scale on request rate, latency and 503s.
+   - **query:** scale on query latency and CPU.
+   - **ClickHouse:** watch insert latency and batch size.
+   - Parallelism is capped by the partition count, so I'd create topics with many more partitions up front (for example 48). Adding partitions later moves IPs to other partitions and splits their per-IP state.
+2. **High availability and retention.**
+   - **Kafka:** replication factor 3 with `min.insync.replicas=2`.
+   - **ClickHouse:** a replicated table, sharded by `configId` behind a distributed table.
+   - **Retention:** `TTL` on the table and on the topics.
+3. **Query performance at scale.**
+   - Pre-aggregated per-minute tables (materialized views) for the summary.
+   - One `GROUPING SETS` query instead of 5.
+   - Keyset paging for samples instead of offsets.
+4. **Hot-IP skew.** A single flooding IP lands on a single partition. Detect hot keys and salt them (spread one IP over several partitions, then combine its counts), or route them to a separate topic.
+5. **Exactly-once.** Kafka Streams `exactly_once_v2`, plus de-duplication on insert, would remove the rare duplicate rows that queries can count until ClickHouse merges them.
+6. **Bigger inserts at low traffic.** One sink consumer with a longer fetch wait gives fewer, larger inserts, at the cost of about a second of extra latency. An alternative is ClickHouse's own Kafka engine or Kafka Connect instead of our consumer: fewer moving parts, but less control over retries and parking bad events.
+7. **Security.**
+   - Authentication on the APIs, with each client limited to its own `configId`s.
+   - Rate limiting.
+   - TLS and SASL to Kafka and ClickHouse.
+8. **Schemas.** Avro with a schema registry on the topics, for smaller messages and safe schema changes between roles.
+9. **Alerting beyond one instance.**
+   - Route evaluate calls to the instance that owns each count key.
+   - Push "started / stopped firing" to an `alerts` topic for notifications and history.
+10. **Operations polish:**
+    - A Kafka health check in `/actuator/health`.
+    - Static group membership, so a redeployed processor doesn't wait about 40 s to rebalance.
+    - A replay tool for `events.failed`.
+    - Processing time as the Kafka message time.
+    - Separate Maven modules and images per role once the roles grow apart.
 
 ## What was challenging
 
