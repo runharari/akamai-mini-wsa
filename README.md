@@ -1,10 +1,10 @@
 # Mini WSA: a mini security analytics pipeline
 
-A Spring Boot service that ingests web-security events (DLRs), classifies and scores them, stores them in ClickHouse, and serves statistics and samples over a REST API.
+A Spring Boot service that ingests web-security events (DLRs), classifies and scores them, stores them in ClickHouse, and serves statistics and samples over a REST API. Alert rules are checked against the event stream with Kafka Streams.
 
 ## Quick start
 
-Requirements: Docker (about 3 GB of memory for the whole stack).
+Requirements: Docker with about 4 GB of free memory (the whole stack uses about 3.3 GB).
 
 ```bash
 docker compose up --build -d --wait   # Kafka, ClickHouse and the app (5 roles); a few minutes the first time
@@ -19,6 +19,7 @@ curl -s localhost:8080/actuator/health
 Build and test the app without Docker: Java 25, then `./mvnw test` (unit tests, seconds) or `./mvnw verify` (adds the integration tests, which need Docker for Testcontainers). The integration tests include `PipelineIT`, an end-to-end test against real Kafka and ClickHouse:
 - It posts an attack wave and a calm event to the ingest API.
 - It waits until they're queryable, then checks the summary numbers (including the +15 repeat-offender score), the samples order, filter and total, a 400, and the `wsa_*` metrics.
+- It defines an alert rule, sends a wave, and waits until the rule fires.
 
 ### Load test data
 
@@ -37,7 +38,7 @@ curl -s localhost:8081/v1/stats/summary        # the attack-wave IPs top the att
   - `--seed N`: a reproducible data set.
   - `--out events.json`: writes a JSON array to the file instead of sending it. Up to 5,000 events fits one `curl --data @events.json` request.
 
-On a laptop (Docker, 4 app containers), 10,000 events were accepted in about 1 second. A summary query over them took about 30 to 40 ms.
+On a laptop (the whole stack in Docker), 10,000 events were accepted in about 1 second. A summary query over them took about 30 to 40 ms.
 
 ## How it works, in three lines
 
@@ -156,7 +157,7 @@ Each event has the original fields plus `receivedAt`, `attackType` and `threatSc
 
 ### Alerting (bonus)
 
-Rules like "more than 50 INJECTION events within 10 minutes", checked against events as they stream in. Port 8082.
+Rules like "more than 50 INJECTION events within 10 minutes", checked against events as they stream in. Port 8082. The example uses a 6-hour window because the generator spreads its events over the last 6 hours.
 
 ```bash
 curl -s -X POST localhost:8082/v1/alerts/define -H 'Content-Type: application/json' \
@@ -295,6 +296,7 @@ One image runs as five containers (Spring profiles), plus Kafka (KRaft, single b
 - Each topic has 6 partitions, so up to 6 processor and 6 sink instances can share the work (`docker compose up --scale sink=3`).
 - Kafka spreads the partitions and the per-IP state across instances by itself.
 - `ingest` and `query` are stateless, so they scale behind a load balancer.
+- `alerting` runs as one instance for now (see its limits above).
 
 ## Why ClickHouse
 
@@ -363,6 +365,7 @@ The workload is analytics over a huge, append-only stream: count, group by and a
 - **One bad event must not stop the pipeline.** While testing edge cases I found that Kafka 4 refuses messages dated more than an hour in the future, and ClickHouse refuses one insert spanning more than 100 daily partitions. Our retry-forever handlers would have stalled on such events.
   - The fix has two layers. Ingest rejects values like these up front. Anything that still fails is parked on `events.failed` with its reason.
   - The sink tells "ClickHouse is down" (retry) apart from "this event is bad" (park it) with a quick `SELECT 1`.
+- **Alert counts that silently fell short.** In Docker, the alerting count for a rule stayed far below what ClickHouse counted for the same window, even though the app had read every event. The cause was Kafka Streams' grace period. A windowed count drops events that arrive more than the grace period behind the newest event seen, and a second generator run sends events hours "late". I reproduced it in a `TopologyTestDriver` test first, then set the grace period to the longest rule window (a day). After that, the counts matched ClickHouse exactly.
 
 ## One thing I learned
 
@@ -371,7 +374,11 @@ Kafka Streams state stores. I had used Kafka for consumers and pipelines, but no
 - A changelog topic that restores it after a restart.
 - Punctuators driven by event time.
 
-It replaced the Redis I first had in mind for the per-IP window, with less to run.
+It replaced the Redis I first had in mind for the per-IP window, with less to run. The alerting bonus took it further:
+- Window stores for per-minute counts.
+- A `GlobalKTable` fed by a compacted topic, as a small rules database.
+- Interactive queries that answer an HTTP request straight from the stream's state.
+- Grace periods, learned the hard way.
 
 ## Milestones
 
