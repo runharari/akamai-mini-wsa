@@ -4,3 +4,55 @@ spring:
   threads:
     virtual:
       enabled: true
+
+  datasource:
+    url: ${CLICKHOUSE_URL:jdbc:clickhouse://localhost:8123/default}
+    username: ${CLICKHOUSE_USER:wsa}
+    password: ${CLICKHOUSE_PASSWORD:wsa}
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:29092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all                       # 201 means every in-sync replica stored the event
+      properties:
+        enable.idempotence: true      # retries never duplicate a message
+        linger.ms: 5                  # small wait so events of one request go out together
+        max.block.ms: 5000            # fail fast (503) when Kafka is unreachable
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+    consumer:
+      group-id: clickhouse-sink
+      auto-offset-reset: earliest     # a new consumer group starts from the beginning, never skips
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      max-poll-records: 1000          # at most 1000 events per ClickHouse insert
+      fetch-min-size: 64KB            # wait for a decent batch ...
+      fetch-max-wait: 500ms           # ... but never longer than this
+    streams:
+      application-id: mini-wsa-processor
+      properties:
+        num.stream.threads: 3         # up to one per partition is useful
+        default.deserialization.exception.handler: org.apache.kafka.streams.errors.LogAndContinueExceptionHandler
+        auto.offset.reset: earliest
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  pattern:
+    level: "%5p [%X{requestId:-}]"
+
+wsa:
+  kafka:
+    partitions: 6
+  ingest:
+    max-batch-size: 5000
+    publish-timeout: 10s
+  sink:
+    concurrency: 3
